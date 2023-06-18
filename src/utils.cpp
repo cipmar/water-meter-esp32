@@ -1,95 +1,66 @@
  /*  the radian_trx SW shall not be distributed  nor used for commercial product*/
  /*  it is exposed just to demonstrate CC1101 capability to reader water meter indexes */
  /*  there is no Warranty on radian_trx SW */
-
 #include <arduino.h>
-
 #include "everblu_meters.h"
  
 void show_in_hex(uint8_t* buffer, size_t len)
 {
-  int i=0;
+  	int i=0;
 	for (i=0 ; i<len ; i++) {
-		if (!(i % 16))
-			puts("");
-
-		printf("%02X ", buffer[i]);
+		if (!(i % 16)) {
+			SerialDebug.println();
+		}
+		SerialDebug.printf("%02X ", buffer[i]);
 	}
-	printf("\n");
+	SerialDebug.println();
 }
 
 void show_in_hex_array(uint8_t* buffer, size_t len)
 {
-  int i=0;
-	for (i=0 ; i<len ; i++) {
-    if (!(i % 16) && i > 0) Serial.println(""); // printf("\n");
-    Serial.printf("0x%02X, ", buffer[i]);
+	for (int i=0 ; i<len ; i++) {
+    	if (!(i % 16) && i > 0) {
+			SerialDebug.println();
+		}
+    	SerialDebug.printf("0x%02X, ", buffer[i]);
 	}
-  Serial.println("");
+  	SerialDebug.println("");
 }
 
-void show_in_hex_one_line(uint8_t* buffer, size_t len)
-{
-  int i=0;
-	for (i=0 ; i<len ; i++) {
-    Serial.printf("%02X ", buffer[i]);
-	}
-}
-
-void show_in_hex_one_line_GET(uint8_t* buffer, size_t len)
-{
-  int i=0;
-	for (i=0 ; i<len ; i++) {
-    Serial.printf("%02XS", buffer[i]);
+void show_in_hex_one_line(uint8_t* buffer, size_t len) {
+	for (int i=0 ; i<len ; i++) {
+    	SerialDebug.printf("%02X ", buffer[i]);
 	}
 }
 
-void show_in_bin(uint8_t* buffer, size_t len)
-{
+void show_in_hex_one_line_GET(uint8_t* buffer, size_t len) {
+	for (int i=0 ; i<len ; i++) {
+    	SerialDebug.printf("%02XS", buffer[i]);
+	}
+}
+
+void show_in_bin(uint8_t* buffer, size_t len) {
 	const uint8_t *ptr;
 	uint8_t mask;
-	for ( ptr = buffer; len--; ptr++ )
-	{		
-		for ( mask = 0x80 ; mask ; mask >>= 1 )
-		{
-			(mask & *ptr) > 0 ?  printf("1") : printf("0");
+	for ( ptr = buffer; len--; ptr++ ) {		
+		for ( mask = 0x80 ; mask ; mask >>= 1 ) {
+			SerialDebug.print(  (mask & *ptr) ?  "1": "0");
 		}
-		printf(" ");
+		SerialDebug.print(" ");
 	}
-	printf("\n");
-}
-
-void echo_debug(T_BOOL l_flag,char *fmt, ...)
-{
- if (l_flag)
- {
-    va_list args;
-    va_start (args, fmt);
-    vprintf (fmt, args);
-    fflush(stdout);
- }
-
+	SerialDebug.print("\n");
 }
 
 void print_time(void)
-{/*
-	time_t mytime;
-    mytime = time(NULL);
-    printf(ctime(&mytime));*/
-	
-	
+{
   time_t rawtime;
   struct tm * timeinfo;
   char buffer [80];
-
   time (&rawtime);
   timeinfo = localtime (&rawtime);
-
   strftime (buffer,80,"%d/%m/%Y %X",timeinfo);
-  printf("%s",buffer);
-
+  SerialDebug.printf("%s",buffer);
 }
-
 
 
 /*----------------------------------------------------------------------------*/
@@ -107,31 +78,27 @@ static uint16_t		crc_tab[256];
  * time the CRC function is called.
  */
 
-static void init_crc_tab( void ) {
-
+static void init_crc_tab( void ) 
+{
 	uint16_t i;
 	uint16_t j;
 	uint16_t crc;
 	uint16_t c;
 
 	for (i=0; i<256; i++) {
-
 		crc = 0;
 		c   = i;
-
 		for (j=0; j<8; j++) {
-
-			if ( (crc ^ c) & 0x0001 ) crc = ( crc >> 1 ) ^ CRC_POLY_KERMIT;
-			else                      crc =   crc >> 1;
-
+			if ( (crc ^ c) & 0x0001 ) {
+                crc = ( crc >> 1 ) ^ CRC_POLY_KERMIT;
+            } else {
+                crc =   crc >> 1;
+            }   
 			c = c >> 1;
 		}
-
 		crc_tab[i] = crc;
 	}
-
 	crc_tab_init = 1;
-
 }  /* init_crc_tab */
 
 
@@ -143,8 +110,8 @@ static void init_crc_tab( void ) {
  * number of bytes to check is also a parameter.
  */
 
-uint16_t crc_kermit( const unsigned char *input_ptr, size_t num_bytes ) {
-
+uint16_t crc_kermit( const unsigned char *input_ptr, size_t num_bytes ) 
+{
 	uint16_t crc;
 	uint16_t tmp;
 	uint16_t short_c;
@@ -153,26 +120,23 @@ uint16_t crc_kermit( const unsigned char *input_ptr, size_t num_bytes ) {
 	const unsigned char *ptr;
 	size_t a;
 
-	if ( ! crc_tab_init ) init_crc_tab();
-
+	if ( ! crc_tab_init ) {
+        init_crc_tab();
+    }
 	crc = CRC_START_KERMIT;
 	ptr = input_ptr;
 
 	for (a=0; a<num_bytes; a++) {
-
 		short_c = 0x00ff & (uint16_t) *ptr;
-		tmp     =  crc       ^ short_c;
-		crc     = (crc >> 8) ^ crc_tab[ tmp & 0xff ];
-
+		tmp  =  crc ^ short_c;
+		crc  = (crc >> 8) ^ crc_tab[ tmp & 0xff ];
 		ptr++;
 	}
 
 	low_byte  = (crc & 0xff00) >> 8;
 	high_byte = (crc & 0x00ff) << 8;
-	crc       = low_byte | high_byte;
-
+	crc  = low_byte | high_byte;
 	return crc;
-
 }  /* crc_kermit */
 
 /*----------------------------------------------------------------------------*/
@@ -185,44 +149,43 @@ uint16_t crc_kermit( const unsigned char *input_ptr, size_t num_bytes ) {
  * @param outputBuffer Points to the encoded data.
  * @param outputBufferLen Number of bytes of encoded data.
  */
-int encode2serial_1_3(uint8_t *inputBuffer, int inputBufferLen, uint8_t *outputBuffer) {
-
+int encode2serial_1_3(uint8_t *inputBuffer, int inputBufferLen, uint8_t *outputBuffer) 
+{
 	// Adds a start and stop bit and reverses the bit order.
 	// 76543210 76543210 76543210 76543210
 	// is encoded to:
 	// #0123456 7###0123 4567###0 1234567# ##012345 6s7# (# -> Start/Stop bit)
-
 	int bytepos;
 	int bitpos;
 	int i;
 	int j = 0;
 	
-   for (i=0 ; i < (inputBufferLen * 8) ; i++) {
-//printf("\ni=%u",i);
+    for (i=0 ; i < (inputBufferLen * 8) ; i++) {
+        //printf("\ni=%u",i);
 		if (i % 8 == 0) {
-		   if (i > 0) {
-//printf(" j=%u stopBIT",j);
-			  // Insert stop bit (3)
-			  bytepos = j / 8;
-			  bitpos = j % 8;
-			  outputBuffer[bytepos] |= 1 << (7 - bitpos);
-			  j++;
+		    if (i > 0) {
+                //printf(" j=%u stopBIT",j);
+			    // Insert stop bit (3)
+			    bytepos = j / 8;
+			    bitpos = j % 8;
+			    outputBuffer[bytepos] |= 1 << (7 - bitpos);
+			    j++;
 			
-			  bytepos = j / 8;
-			  bitpos = j % 8;
-			  outputBuffer[bytepos] |= 1 << (7 - bitpos);
-			  j++;
+			    bytepos = j / 8;
+			    bitpos = j % 8;
+			    outputBuffer[bytepos] |= 1 << (7 - bitpos);
+			    j++;
 			
-			  bytepos = j / 8;
-			  bitpos = j % 8;
-			  outputBuffer[bytepos] |= 1 << (7 - bitpos);
-			  j++;
+			    bytepos = j / 8;
+			    bitpos = j % 8;
+			    outputBuffer[bytepos] |= 1 << (7 - bitpos);
+			    j++;
 		    } //stop bit
 		
 			// Insert start bit (0)
 			bytepos = j / 8;
 			bitpos = j % 8;
-//printf(" j=%u startBIT",j);
+            //printf(" j=%u startBIT",j);
 			outputBuffer[bytepos] &= ~(1 << (7 - bitpos));
 			j++;
 		}// start stop bit
@@ -234,20 +197,17 @@ int encode2serial_1_3(uint8_t *inputBuffer, int inputBufferLen, uint8_t *outputB
 			bytepos = j / 8;
 			bitpos = 7 - (j % 8);
 			outputBuffer[bytepos] |= 1 << bitpos;
-
 		} else {
 			bytepos = j / 8;
 			bitpos = 7 - (j % 8);
 			outputBuffer[bytepos] &= ~(1 << bitpos);
 		}
-
 		j++;
 	}//for
 	
 	//insert additional stop bit until end of byte
-    while (j%8 > 0)
-	{
-	   	bytepos = j / 8;
+    while (j%8 > 0) {
+	    bytepos = j / 8;
 		bitpos = 7 - (j % 8);
 		outputBuffer[bytepos] |= 1 << bitpos;
 		j++;
@@ -259,7 +219,8 @@ int encode2serial_1_3(uint8_t *inputBuffer, int inputBufferLen, uint8_t *outputB
 int Make_Radian_Master_req(uint8_t *outputBuffer,uint8_t year,uint32_t serial)
 { 
   uint16_t crc;
-  uint8_t to_encode[] ={0x13,0x10,0x00,0x45,0xFF,0xFF,0xFF,0xFF,0x00,0x45,0x20,0x0A,0x50,0x14,0x00,0x0A,0x40,0xFF,0xFF}; //les 2 derniers octet sont en reserve pour le CKS ainsi que le serial number
+  //les 2 derniers octet sont en reserve pour le CKS ainsi que le serial number
+  uint8_t to_encode[] ={0x13,0x10,0x00,0x45,0xFF,0xFF,0xFF,0xFF,0x00,0x45,0x20,0x0A,0x50,0x14,0x00,0x0A,0x40,0xFF,0xFF}; 
   uint8_t synch_pattern[] ={0x50,0x00,0x00,0x00,0x03,0xFF,0xFF,0xFF,0xFF};
   uint8_t TS_len_u8;
   
@@ -269,8 +230,10 @@ int Make_Radian_Master_req(uint8_t *outputBuffer,uint8_t year,uint32_t serial)
   to_encode[7] = (uint8_t) (serial&0x000000FF);
   crc = crc_kermit(to_encode,sizeof(to_encode)-2);
   //printf("crc:%x\n",crc);
+
   to_encode[sizeof(to_encode)-2]=(uint8_t)((crc&0xFF00)>>8);
   to_encode[sizeof(to_encode)-1]=(uint8_t)(crc&0x00FF);
+
   //show_in_hex_one_line(to_encode,sizeof(to_encode));
   memcpy(outputBuffer,synch_pattern,sizeof(synch_pattern));
   TS_len_u8=encode2serial_1_3(to_encode,sizeof(to_encode),&outputBuffer[sizeof(synch_pattern)]);

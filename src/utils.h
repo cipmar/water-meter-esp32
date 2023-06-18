@@ -4,15 +4,12 @@
 
 #include <arduino.h>
 
- 
-void show_in_hex(uint8_t* buffer, size_t len);
+ void show_in_hex(uint8_t* buffer, size_t len);
 void show_in_hex_array(uint8_t* buffer, size_t len);
 void show_in_hex_one_line(uint8_t* buffer, size_t len);
 void show_in_hex_one_line_GET(uint8_t* buffer, size_t len);
 void show_in_bin(uint8_t* buffer, size_t len);
-void echo_debug(T_BOOL l_flag, char *fmt, ...);
 void print_time(void);
-
 
 static void init_crc_tab(void);
 uint16_t crc_kermit(const unsigned char *input_ptr, size_t num_bytes);

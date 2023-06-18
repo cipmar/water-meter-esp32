@@ -10,8 +10,6 @@
 // https://github.com/plapointe6/EspMQTTClient/releases/tag/1.13.3
 #include "EspMQTTClient.h"
 
-// Edit "everblu_meters.h" file then change the define at the end of the file
-
 #ifndef LED_BUILTIN
 // Change this pin if needed
 #define LED_BUILTIN 2
@@ -28,13 +26,7 @@ EspMQTTClient mqtt(
   1883                  // MQTT Broker server port
 );
 
-char *jsonTemplate = 
-"{                    \
-\"liters\": %d,       \
-\"counter\" : %d,     \
-\"battery\" : %d,     \
-\"timestamp\" : \"%s\"\
-}";
+const char *jsonTemplate = "{ \"liters\":%d, \"counter\":%d, \"battery\":%d, \"timestamp\":\"%s\" }";
 
 int _retry = 0;
 void onUpdateData()
@@ -44,13 +36,15 @@ void onUpdateData()
 
   time_t tnow = time(nullptr);
   struct tm *ptm = gmtime(&tnow);
-  Serial.printf("Current date (UTC) : %04d/%02d/%02d %02d:%02d:%02d - %s\n", ptm->tm_year + 1900, ptm->tm_mon + 1, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec, String(tnow, DEC).c_str());
+  SerialDebug.printf("Current date (UTC) : %04d/%02d/%02d %02d:%02d:%02d - %s\n", 
+                                    ptm->tm_year + 1900, ptm->tm_mon + 1, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec, 
+                                    String(tnow, DEC).c_str());
 
   char iso8601[128];
   strftime(iso8601, sizeof iso8601, "%FT%TZ", gmtime(&tnow));
 
   if (meter_data.reads_counter == 0 || meter_data.liters == 0) {
-    Serial.println("Unable to retrieve data from meter. Retry later...");
+    SerialDebug.println("Unable to retrieve data from meter. Retry later...");
 
     // Call back this function in 10 sec (in miliseconds)
     if (_retry++ < 10)
@@ -61,7 +55,7 @@ void onUpdateData()
 
   digitalWrite(LED_BUILTIN, LOW); // turned on
 
-  Serial.printf("Liters : %d\nBattery (in months) : %d\nCounter : %d\n\n", meter_data.liters, meter_data.battery_left, meter_data.reads_counter);
+  SerialDebug.printf("Liters : %d\nBattery (in months) : %d\nCounter : %d\n\n", meter_data.liters, meter_data.battery_left, meter_data.reads_counter);
 
   mqtt.publish("everblu/cyble/liters", String(meter_data.liters, DEC), true);
   delay(50); // Do not remove
@@ -91,7 +85,7 @@ void onScheduled()
     // Call back in 23 hours
     mqtt.executeDelayed(1000 * 60 * 60 * 23, onScheduled);
 
-    Serial.println("It is time to update data from meter :)");
+    SerialDebug.println("It is time to update data from meter :)");
 
     // Update data
     _retry = 0;
@@ -143,7 +137,7 @@ String jsonDiscoveryDevice2(
   \"identifiers\" : [\
   \"14071984\" ],\
   \"name\": \"Compteur Eau\",\
-  \"model\": \"Everblu Cyble ESP8266/ESP32\",\
+  \"model\": \"Everblu Cyble ESP32\",\
   \"manufacturer\": \"Psykokwak\",\
   \"suggested_area\": \"Home\"}\
 }");
@@ -161,7 +155,7 @@ String jsonDiscoveryDevice3(
   \"identifiers\" : [\
   \"14071984\" ],\
   \"name\": \"Compteur Eau\",\
-  \"model\": \"Everblu Cyble ESP8266/ESP32\",\
+  \"model\": \"Everblu Cyble ESP32\",\
   \"manufacturer\": \"Psykokwak\",\
   \"suggested_area\": \"Home\"}\
 }");
@@ -180,22 +174,17 @@ String jsonDiscoveryDevice4(
   \"identifiers\" : [\
   \"14071984\" ],\
   \"name\": \"Compteur Eau\",\
-  \"model\": \"Everblu Cyble ESP8266/ESP32\",\
+  \"model\": \"Everblu Cyble ESP32\",\
   \"manufacturer\": \"Psykokwak\",\
   \"suggested_area\": \"Home\"}\
 }");
 
 void onConnectionEstablished()
 {
-  Serial.println("Connected to MQTT Broker :)");
-
-  Serial.println("> Configure time from NTP server.");
+  SerialDebug.println("Connected to MQTT Broker :)");
+  SerialDebug.println("> Configure time from NTP server.");
   configTzTime("UTC0", "pool.ntp.org");
-
-
-
-
-  Serial.println("> Configure Arduino OTA flash.");
+  SerialDebug.println("> Configure Arduino OTA flash.");
   ArduinoOTA.onStart([]() {
     String type;
     if (ArduinoOTA.getCommand() == U_FLASH) {
@@ -205,30 +194,30 @@ void onConnectionEstablished()
       type = "filesystem";
     }
     // NOTE: if updating FS this would be the place to unmount FS using FS.end()
-    Serial.println("Start updating " + type);
+    SerialDebug.println("Start updating " + type);
   });
   ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd updating.");
+    SerialDebug.println("\nEnd updating.");
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("%u%%\r\n", (progress / (total / 100)));
+    SerialDebug.printf("%u%%\r\n", (progress / (total / 100)));
   });
   ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
+    SerialDebug.printf("Error[%u]: ", error);
     if (error == OTA_AUTH_ERROR) {
-      Serial.println("Auth Failed");
+      SerialDebug.println("Auth Failed");
     }
     else if (error == OTA_BEGIN_ERROR) {
-      Serial.println("Begin Failed");
+      SerialDebug.println("Begin Failed");
     }
     else if (error == OTA_CONNECT_ERROR) {
-      Serial.println("Connect Failed");
+      SerialDebug.println("Connect Failed");
     }
     else if (error == OTA_RECEIVE_ERROR) {
-      Serial.println("Receive Failed");
+      SerialDebug.println("Receive Failed");
     }
     else if (error == OTA_END_ERROR) {
-      Serial.println("End Failed");
+      SerialDebug.println("End Failed");
     }
   });
   ArduinoOTA.setHostname("EVERBLUREADER");
@@ -236,17 +225,13 @@ void onConnectionEstablished()
 
   mqtt.subscribe("everblu/cyble/trigger", [](const String& message) {
     if (message.length() > 0) {
-
-      Serial.println("Update data from meter from MQTT trigger");
-
+      SerialDebug.println("Update data from meter from MQTT trigger");
       _retry = 0;
       onUpdateData();
     }
   });
 
-
-
-  Serial.println("> Send MQTT config for HA.");
+  SerialDebug.println("> Send MQTT config for HA.");
   // Auto discovery
   delay(50); // Do not remove
   mqtt.publish("homeassistant/sensor/water_meter_value/config", jsonDiscoveryDevice1, true);
@@ -261,49 +246,83 @@ void onConnectionEstablished()
   onScheduled();
 }
 
+extern int _spi_speed;
 void setup()
 {
-  Serial.begin(115200);
-  Serial.println("\n");
-
+  bool led_state = LOW; // turned on
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH); // turned off
+  digitalWrite(LED_BUILTIN, led_state); 
+
+  SerialDebug.begin(115200);
+
+  // Wait for serial to be up in 2s
+  while (!SerialDebug && millis()<2000) {
+    delay(250);
+    led_state = !led_state;
+    digitalWrite(LED_BUILTIN, led_state); 
+  }
+  // turned off
+  digitalWrite(LED_BUILTIN, HIGH); 
+
+  SerialDebug.println();
+  SerialDebug.printf("===========================\n");
+  SerialDebug.printf("EverBlu Meter Reading\n");
+  SerialDebug.printf("Meter Year   : %02d\n", METER_YEAR);
+  SerialDebug.printf("Meter Serial : %06d\n", METER_SERIAL);
+  SerialDebug.printf("SPI Speed    : %dKHz\n", _spi_speed/1000);
+  SerialDebug.printf("===========================\n");
 
   mqtt.setMaxPacketSize(1024);
   //mqtt.enableDebuggingMessages(true);
 
-  /*
-  // Use this piece of code to find the right frequency.
-  for (float i = 433.76f; i < 433.890f; i += 0.0005f) {
-    Serial.printf("Test frequency : %f\n", i);
-    cc1101_init(i);
+  if (!cc1101_init(FREQUENCY,true)) {
+    SerialDebug.printf("Unable to find CC1101 Chip !!\n");
+  } else {
+    float f_start = 0.0f;
+    float f_end = 0.0f;
+    float f;
+    // Use this piece of code to find the right frequency.
+    for (f = 433.76f; f < 433.890f; f += 0.0005f) {
+      SerialDebug.printf("Test frequency : %.4fMHz\n", f);
+      cc1101_init(f);
 
-    struct tmeter_data meter_data;
-    meter_data = get_meter_data();
+      struct tmeter_data meter_data;
+      meter_data = get_meter_data();
 
-    if (meter_data.reads_counter != 0 || meter_data.liters != 0) {
-      Serial.printf("\n------------------------------\nGot frequency : %f\n------------------------------\n", i);
-
-      Serial.printf("Liters : %d\nBattery (in months) : %d\nCounter : %d\n\n", meter_data.liters, meter_data.battery_left, meter_data.reads_counter);
-
-      digitalWrite(LED_BUILTIN, LOW); // turned on
-
-      while (42);
+      if (meter_data.reads_counter != 0 || meter_data.liters != 0) {
+        if (f_start == 0) {
+          f_start = f;
+        } 
+        SerialDebug.println("------------------------------");
+        SerialDebug.printf("Got frequency : %.4f", f);
+        SerialDebug.println("------------------------------");
+        SerialDebug.printf("Liters : %d\nBattery (in months) : %d\nCounter : %d\n\n", meter_data.liters, meter_data.battery_left, meter_data.reads_counter);
+        digitalWrite(LED_BUILTIN, LOW); // turned on
+      } else {
+        if (f_start!=0) {
+          f_end = f;
+          break;
+        }
+      }
     }
+
+    if (f_start || f_end) {
+      SerialDebug.printf("\nWorking from %fMHz to %fMhz\n", f_start, f_end);
+      f = (f_end - f_start) / 2;
+      f += f_start ;
+    } else {
+      SerialDebug.printf("\nNot found a working Frequency!\n");
+      f = FREQUENCY;
+    }
+    SerialDebug.printf("Setting to %fMHz\n", f);
+    cc1101_init(f);
   }
-  */
 
-
-
-  cc1101_init(FREQUENCY);
-
-  /*
   // Use this piece of code to test
-  struct tmeter_data meter_data;
-  meter_data = get_meter_data();
-  Serial.printf("\nLiters : %d\nBattery (in months) : %d\nCounter : %d\nTime start : %d\nTime end : %d\n\n", meter_data.liters, meter_data.battery_left, meter_data.reads_counter, meter_data.time_start, meter_data.time_end);
-  while (42);
-  */
+  //struct tmeter_data meter_data;
+  //meter_data = get_meter_data();
+  //SerialDebug.printf("\nLiters : %d\nBattery (in months) : %d\nCounter : %d\nTime start : %d\nTime end : %d\n\n", meter_data.liters, meter_data.battery_left, meter_data.reads_counter, meter_data.time_start, meter_data.time_end);
+
 }
 
 void loop()
