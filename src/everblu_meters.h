@@ -11,7 +11,6 @@
 #include "string.h"
 #include "cc1101.h"
 
-typedef unsigned char T_BOOL;       //1 octets
 
 
 
