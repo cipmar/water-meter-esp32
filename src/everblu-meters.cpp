@@ -12,7 +12,7 @@
 
 #ifndef LED_BUILTIN
 // Change this pin if needed
-#define LED_BUILTIN 2
+#define LED_BUILTIN NOT_A_PIN
 #endif
 
 
@@ -250,19 +250,20 @@ extern int _spi_speed;
 void setup()
 {
   bool led_state = LOW; // turned on
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, led_state); 
+  //pinMode(LED_BUILTIN, OUTPUT);
+  //digitalWrite(LED_BUILTIN, led_state); 
 
   SerialDebug.begin(115200);
+  delay(2000);
 
   // Wait for serial to be up in 2s
-  while (!SerialDebug && millis()<2000) {
-    delay(250);
-    led_state = !led_state;
-    digitalWrite(LED_BUILTIN, led_state); 
-  }
+  //while (!SerialDebug && millis()<2000) {
+  //  delay(250);
+  //  led_state = !led_state;
+  //  digitalWrite(LED_BUILTIN, led_state); 
+  //}
   // turned off
-  digitalWrite(LED_BUILTIN, HIGH); 
+  //digitalWrite(LED_BUILTIN, HIGH); 
 
   SerialDebug.println();
   SerialDebug.printf("===========================\n");
@@ -278,42 +279,47 @@ void setup()
   if (!cc1101_init(FREQUENCY,true)) {
     SerialDebug.printf("Unable to find CC1101 Chip !!\n");
   } else {
-    float f_start = 0.0f;
-    float f_end = 0.0f;
-    float f;
-    // Use this piece of code to find the right frequency.
-    for (f = 433.76f; f < 433.890f; f += 0.0005f) {
-      SerialDebug.printf("Test frequency : %.4fMHz\n", f);
-      cc1101_init(f);
+    SerialDebug.printf("Found CC1101\n");
+    float f = FREQUENCY;
+    // Scan for correct frequency
+    if ( f == 0.0f ) {
+      float f_start = 0.0f;
+      float f_end = 0.0f;
+      // Use this piece of code to find the right frequency.
+      for (f = 433.76f; f < 433.890f; f += 0.0005f) {
+        SerialDebug.printf("Test frequency : %.4fMHz\n", f);
+        cc1101_init(f);
 
-      struct tmeter_data meter_data;
-      meter_data = get_meter_data();
+        struct tmeter_data meter_data;
+        meter_data = get_meter_data();
 
-      if (meter_data.reads_counter != 0 || meter_data.liters != 0) {
-        if (f_start == 0) {
-          f_start = f;
-        } 
-        SerialDebug.println("------------------------------");
-        SerialDebug.printf("Got frequency : %.4f", f);
-        SerialDebug.println("------------------------------");
-        SerialDebug.printf("Liters : %d\nBattery (in months) : %d\nCounter : %d\n\n", meter_data.liters, meter_data.battery_left, meter_data.reads_counter);
-        digitalWrite(LED_BUILTIN, LOW); // turned on
-      } else {
-        if (f_start!=0) {
-          f_end = f;
-          break;
+        if (meter_data.reads_counter != 0 || meter_data.liters != 0) {
+          if (f_start == 0) {
+            f_start = f;
+          } 
+          SerialDebug.println("------------------------------");
+          SerialDebug.printf("Got frequency : %.4f", f);
+          SerialDebug.println("------------------------------");
+          SerialDebug.printf("Liters : %d\nBattery (in months) : %d\nCounter : %d\n\n", meter_data.liters, meter_data.battery_left, meter_data.reads_counter);
+          digitalWrite(LED_BUILTIN, LOW); // turned on
+        } else {
+          if (f_start!=0) {
+            f_end = f;
+            break;
+          }
         }
       }
-    }
 
-    if (f_start || f_end) {
-      SerialDebug.printf("\nWorking from %fMHz to %fMhz\n", f_start, f_end);
-      f = (f_end - f_start) / 2;
-      f += f_start ;
-    } else {
-      SerialDebug.printf("\nNot found a working Frequency!\n");
-      f = FREQUENCY;
-    }
+      if (f_start || f_end) {
+        SerialDebug.printf("\nWorking from %fMHz to %fMhz\n", f_start, f_end);
+        f = (f_end - f_start) / 2;
+        f += f_start ;
+      } else {
+        SerialDebug.printf("\nNot found a working Frequency!\n");
+        f = FREQUENCY;
+      }
+    } 
+
     SerialDebug.printf("Setting to %fMHz\n", f);
     cc1101_init(f);
   }
