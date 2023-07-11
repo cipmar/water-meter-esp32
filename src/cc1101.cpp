@@ -357,6 +357,15 @@ bool  cc1101_init(float freq, bool show)
     return   true;
 }
 
+void cc1101_sleep() 
+{
+    CC1101_CMD(SIDLE); // sets to idle first
+    CC1101_CMD(SPWD);  // set to power down when SPI SS goest High
+    delay(50);
+    SPI.end();
+    digitalWrite(SPI_SS, HIGH);
+}
+
 int8_t cc1100_rssi_convert2dbm(uint8_t Rssi_dec)
 {
     int8_t rssi_dbm;
