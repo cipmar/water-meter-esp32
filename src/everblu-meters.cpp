@@ -1,5 +1,5 @@
 #include <ArduinoOTA.h>
-
+#include <Preferences.h>
 #include "everblu_meters.h"
 
 // Project source : 
@@ -9,12 +9,6 @@
 // Install from Arduino library manager (and its dependancies)
 // https://github.com/plapointe6/EspMQTTClient/releases/tag/1.13.3
 #include "EspMQTTClient.h"
-
-#ifndef LED_BUILTIN
-// Change this pin if needed
-#define LED_BUILTIN NOT_A_PIN
-#endif
-
 
 EspMQTTClient mqtt(
   "MyESSID",            // Your Wifi SSID
@@ -246,83 +240,144 @@ void onConnectionEstablished()
   onScheduled();
 }
 
-extern int _spi_speed;
+Preferences preferences;
+
 void setup()
 {
-  bool led_state = LOW; // turned on
-  //pinMode(LED_BUILTIN, OUTPUT);
-  //digitalWrite(LED_BUILTIN, led_state); 
-
   SerialDebug.begin(115200);
-  delay(2000);
+
+  // this resets all the neopixels to an off state
+  strip.Begin();
+  strip.Show();
+  delay(100); // Needed to initialize
+  DotStar_Clear();
+	DotStar_SetBrightness( MY_RGB_BRIGHTNESS );    
 
   // Wait for serial to be up in 2s
-  //while (!SerialDebug && millis()<2000) {
-  //  delay(250);
-  //  led_state = !led_state;
-  //  digitalWrite(LED_BUILTIN, led_state); 
-  //}
-  // turned off
-  //digitalWrite(LED_BUILTIN, HIGH); 
+  while (millis()<2000) {
+    delay(200);
+    DotStar_SetPixelColor(DOTSTAR_YELLOW, true);
+    digitalWrite(LED_BUILTIN, LOW); 
+    delay(50);
+    digitalWrite(LED_BUILTIN, HIGH); 
+    DotStar_Clear();
+    SerialDebug.print('.');
+  }
+
+  // Open Preferences, Namespace name is limited to 15 chars.
+  preferences.begin("everblu-meter", false);
+  // Remove all preferences under the opened namespace
+  //preferences.clear();
+  // Or remove the frequency key only
+  //preferences.remove("frequency");
+
+  // Get the frequency value, if the key does not exist, return a default value of 0
+  float frequency = preferences.getFloat("frequency", 0.0f);
 
   SerialDebug.println();
-  SerialDebug.printf("===========================\n");
-  SerialDebug.printf("EverBlu Meter Reading\n");
+  SerialDebug.println("===========================");
+  SerialDebug.println("EverBlu Meter Reading");
+  SerialDebug.print ("Wakeup by    : "); show_wakeup_reason();
   SerialDebug.printf("Meter Year   : %02d\n", METER_YEAR);
   SerialDebug.printf("Meter Serial : %06d\n", METER_SERIAL);
-  SerialDebug.printf("SPI Speed    : %dKHz\n", _spi_speed/1000);
-  SerialDebug.printf("===========================\n");
+  SerialDebug.printf("SPI Speed    : %.1fMHz\n", ((float)_spi_speed) / 1000.0f / 1000.0f);
+  SerialDebug.printf("Frequency    : %.4fMHz\n", frequency);
+  SerialDebug.println("===========================");
+
+
 
   mqtt.setMaxPacketSize(1024);
   //mqtt.enableDebuggingMessages(true);
 
-  if (!cc1101_init(FREQUENCY,true)) {
-    SerialDebug.printf("Unable to find CC1101 Chip !!\n");
-  } else {
-    SerialDebug.printf("Found CC1101\n");
-    float f = FREQUENCY;
-    // Scan for correct frequency
-    if ( f == 0.0f ) {
-      float f_start = 0.0f;
-      float f_end = 0.0f;
-      // Use this piece of code to find the right frequency.
-      for (f = 433.76f; f < 433.890f; f += 0.0005f) {
-        SerialDebug.printf("Test frequency : %.4fMHz\n", f);
-        cc1101_init(f);
+  bool is_cc = cc1101_init(433.825f,true);
 
-        struct tmeter_data meter_data;
-        meter_data = get_meter_data();
+  if (!is_cc) {
+    SerialDebug.print("Unable to find CC1101 Chip !!\n");
+    // Blink RED 10 time
+    for (int i =0; i<10; i++) {
+      delay(240);
+      DotStar_SetPixelColor(DOTSTAR_RED, true);
+      digitalWrite(LED_BUILTIN, LOW); 
+      delay(10);
+      digitalWrite(LED_BUILTIN, HIGH); 
+      DotStar_Clear();
+    }
+    // Sleep
+    deep_sleep();
+  }
 
-        if (meter_data.reads_counter != 0 || meter_data.liters != 0) {
-          if (f_start == 0) {
-            f_start = f;
-          } 
-          SerialDebug.println("------------------------------");
-          SerialDebug.printf("Got frequency : %.4f", f);
-          SerialDebug.println("------------------------------");
-          SerialDebug.printf("Liters : %d\nBattery (in months) : %d\nCounter : %d\n\n", meter_data.liters, meter_data.battery_left, meter_data.reads_counter);
-          digitalWrite(LED_BUILTIN, LOW); // turned on
-        } else {
-          if (f_start!=0) {
-            f_end = f;
-            break;
-          }
+  SerialDebug.printf("Found CC1101\n");
+  DotStar_SetPixelColor(DOTSTAR_GREEN, true);
+  delay(500);
+  DotStar_Clear();
+
+  // Scan for correct frequency
+  if ( frequency == 0.0f ) {
+    struct tmeter_data meter_data;
+    float f_start = 0.0f;
+    float f_end = 0.0f;
+    // Use this piece of code to find the right frequency.
+    for (frequency = 433.76f; frequency < 433.890f; frequency += 0.0005f) {
+      SerialDebug.printf_P(PSTR("Test frequency : %.4fMHz"), frequency);
+      DotStar_SetPixelColor(DOTSTAR_BLUE, true);
+      delay(250);
+      DotStar_Clear();
+      cc1101_init(frequency);
+      meter_data = get_meter_data();
+      SerialDebug.print(F(" => "));
+      // Got datas ?
+      if (meter_data.reads_counter != 0 || meter_data.liters != 0) {
+        // First working frequency, save it
+        if (f_start == 0.0f) {
+          f_start = frequency;
+        } 
+        SerialDebug.printf_P(PSTR("Liters:%d  BatMonth:%d  Counter:%d"), meter_data.liters, meter_data.battery_left, meter_data.reads_counter);
+        digitalWrite(LED_BUILTIN, LOW); // turned on
+      } else {
+        SerialDebug.print("No answer");
+        if (f_start!=0.0f) {
+          f_end = frequency - 0.0005f ;
+          break;
         }
       }
+      SerialDebug.println();
+    }
 
-      if (f_start || f_end) {
-        SerialDebug.printf("\nWorking from %fMHz to %fMhz\n", f_start, f_end);
-        f = (f_end - f_start) / 2;
-        f += f_start ;
-      } else {
-        SerialDebug.printf("\nNot found a working Frequency!\n");
-        f = FREQUENCY;
-      }
-    } 
+    // Found frequency Range, setup in the middle
+    if (f_start || f_end) {
+      SerialDebug.printf_P(PSTR("\nWorking from %.4fMHz to %.4fMhz\n"), f_start, f_end);
+      frequency = (f_end - f_start) / 2;
+      frequency += f_start ;
+      // Save in NVS
+      preferences.putFloat("frequency", frequency);
+    } else {
+      SerialDebug.println("\nNot found a working Frequency!");
+      frequency = 0.0f;
+    }
+  } 
 
-    SerialDebug.printf("Setting to %fMHz\n", f);
-    cc1101_init(f);
+  if (frequency == 0.0f) {
+    SerialDebug.println("Nothing more to do");
+    // Blink RED 
+    DotStar_SetPixelColor(DOTSTAR_RED, true);
+    delay(500);
+    DotStar_Clear();
+    // put CC1101 to sleep mode
+    cc1101_sleep();
+    // Sleep ESP32
+    deep_sleep();
   }
+
+  SerialDebug.printf_P(PSTR("Setting to %fMHz\n"), frequency);
+  DotStar_SetPixelColor(DOTSTAR_GREEN, true);
+  //delay(500);
+  //DotStar_Clear();
+  //cc1101_init(frequency);
+
+  // put CC1101 to sleep mode
+  cc1101_sleep();
+  // Sleep ESP32
+  deep_sleep();
 
   // Use this piece of code to test
   //struct tmeter_data meter_data;
