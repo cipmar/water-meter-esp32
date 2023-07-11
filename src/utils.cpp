@@ -239,3 +239,66 @@ int Make_Radian_Master_req(uint8_t *outputBuffer,uint8_t year,uint32_t serial)
   TS_len_u8=encode2serial_1_3(to_encode,sizeof(to_encode),&outputBuffer[sizeof(synch_pattern)]);
   return TS_len_u8+sizeof(synch_pattern);
 }
+
+void show_wakeup_reason()
+{
+  esp_sleep_wakeup_cause_t wakeup_reason;
+
+  wakeup_reason = esp_sleep_get_wakeup_cause();
+
+  switch(wakeup_reason)
+  {
+    case ESP_SLEEP_WAKEUP_EXT0 : SerialDebug.print("external signal using RTC_IO"); break;
+    case ESP_SLEEP_WAKEUP_EXT1 : SerialDebug.print("external signal using RTC_CNTL"); break;
+    case ESP_SLEEP_WAKEUP_TIMER : SerialDebug.print("timer"); break;
+    case ESP_SLEEP_WAKEUP_TOUCHPAD : SerialDebug.print("touchpad"); break;
+    case ESP_SLEEP_WAKEUP_ULP : SerialDebug.print("ULP program"); break;
+    default : SerialDebug.printf_P(PSTR("not caused by deep sleep: %d"),wakeup_reason); break;
+  }
+  SerialDebug.println();
+}
+
+void deep_sleep()
+{
+	SerialDebug.println(F("Going to deep sleep mode"));
+	for (int i = 128; i > 16; i--) {
+		DotStar_SetBrightness(i);
+		DotStar_SetPixelColor(DOTSTAR_YELLOW, true);
+		delay(25);
+	}
+
+	// Enable button to wake up
+	SerialDebug.printf_P(PSTR("ESP32 Wake from BTN GPIO%02d "), BTN1);
+#ifdef ESP32C3
+	if (esp_sleep_is_valid_wakeup_gpio((gpio_num_t)BTN1)) {
+		SerialDebug.println(F("OK"));
+		esp_deep_sleep_enable_gpio_wakeup(1ULL << BTN1, BTN1_ACTIVE==0 ? ESP_GPIO_WAKEUP_GPIO_LOW:ESP_GPIO_WAKEUP_GPIO_HIGH);
+	} else {
+		SerialDebug.println(F(" not valid to wake from deep sleep mode"));
+	}
+#else
+		esp_sleep_enable_ext0_wakeup((gpio_num_t)BTN1, BTN1_ACTIVE);
+#endif
+	SerialDebug.println();
+	delay(100);
+	esp_deep_sleep_start();
+}
+
+void light_sleep()
+{
+  SerialDebug.println(F("Going to light sleep mode"));
+  DotStar_SetBrightness(16);
+  DotStar_SetPixelColor(DOTSTAR_BLUE);
+  delay(5000);
+// Enable button to wake up
+#ifdef ESP32C3
+  if (esp_sleep_is_valid_wakeup_gpio((gpio_num_t)BTN1)) {
+    esp_deep_sleep_enable_gpio_wakeup(1ULL << BTN1, BTN1_ACTIVE==0 ? ESP_GPIO_WAKEUP_GPIO_LOW:ESP_GPIO_WAKEUP_GPIO_HIGH);
+  } else {
+	SerialDebug.println(F(" not valid to wake from deep sleep mode"));
+  }
+#else
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)BTN1, BTN1_ACTIVE); // 1 = High, 0 = Low
+#endif
+  // esp_deep_sleep_start();
+}
