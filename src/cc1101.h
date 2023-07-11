@@ -23,7 +23,10 @@ struct tmeter_data {
 };
 
 void setMHZ(float mhz);
-bool  cc1101_init(float freq, bool show = false);
+bool cc1101_init(float freq, bool show = false);
+void cc1101_sleep() ;
 struct tmeter_data get_meter_data(void);
+
+extern int _spi_speed;
 
 #endif // __CC1101_H__
