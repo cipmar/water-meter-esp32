@@ -258,47 +258,21 @@ void show_wakeup_reason()
   SerialDebug.println();
 }
 
-void deep_sleep()
+void deep_sleep(uint32_t seconds)
 {
-	SerialDebug.println(F("Going to deep sleep mode"));
-	for (int i = 128; i > 16; i--) {
+	SerialDebug.print(F("Going to deep sleep mode for"));
+	if (seconds) {
+		SerialDebug.printf_P(PSTR(" %d seconds"), seconds);
+		esp_sleep_enable_timer_wakeup(seconds * 1000 * 1000);
+	} else {
+		SerialDebug.println(F("ever"));
+	}
+	SerialDebug.println();
+	for (int i = MY_RGB_BRIGHTNESS; i > 16; i--) {
 		DotStar_SetBrightness(i);
 		DotStar_SetPixelColor(DOTSTAR_YELLOW, true);
-		delay(25);
+		delay(10);
 	}
-
-	// Enable button to wake up
-	SerialDebug.printf_P(PSTR("ESP32 Wake from BTN GPIO%02d "), BTN1);
-#ifdef ESP32C3
-	if (esp_sleep_is_valid_wakeup_gpio((gpio_num_t)BTN1)) {
-		SerialDebug.println(F("OK"));
-		esp_deep_sleep_enable_gpio_wakeup(1ULL << BTN1, BTN1_ACTIVE==0 ? ESP_GPIO_WAKEUP_GPIO_LOW:ESP_GPIO_WAKEUP_GPIO_HIGH);
-	} else {
-		SerialDebug.println(F(" not valid to wake from deep sleep mode"));
-	}
-#else
-		esp_sleep_enable_ext0_wakeup((gpio_num_t)BTN1, BTN1_ACTIVE);
-#endif
-	SerialDebug.println();
-	delay(100);
 	esp_deep_sleep_start();
 }
 
-void light_sleep()
-{
-  SerialDebug.println(F("Going to light sleep mode"));
-  DotStar_SetBrightness(16);
-  DotStar_SetPixelColor(DOTSTAR_BLUE);
-  delay(5000);
-// Enable button to wake up
-#ifdef ESP32C3
-  if (esp_sleep_is_valid_wakeup_gpio((gpio_num_t)BTN1)) {
-    esp_deep_sleep_enable_gpio_wakeup(1ULL << BTN1, BTN1_ACTIVE==0 ? ESP_GPIO_WAKEUP_GPIO_LOW:ESP_GPIO_WAKEUP_GPIO_HIGH);
-  } else {
-	SerialDebug.println(F(" not valid to wake from deep sleep mode"));
-  }
-#else
-  esp_sleep_enable_ext0_wakeup((gpio_num_t)BTN1, BTN1_ACTIVE); // 1 = High, 0 = Low
-#endif
-  // esp_deep_sleep_start();
-}
