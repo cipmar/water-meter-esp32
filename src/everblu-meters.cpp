@@ -10,19 +10,27 @@
 // https://github.com/plapointe6/EspMQTTClient/releases/tag/1.13.3
 #include "EspMQTTClient.h"
 
+/*
 EspMQTTClient mqtt(
-  "MyESSID",            // Your Wifi SSID
-  "MyWiFiKey",          // Your WiFi key
+  WIFI_SSID,            // Your Wifi SSID
+  WIFI_PASS,          // Your WiFi key
   "mqtt.server.com",    // MQTT Broker server ip
   "MQTTUsername",       // Can be omitted if not needed
   "MQTTPassword",       // Can be omitted if not needed
   "EverblueCyble",      // Client name that uniquely identify your device
   1883                  // MQTT Broker server port
 );
+*/
+
+EspMQTTClient mqtt;
 
 const char *jsonTemplate = "{ \"liters\":%d, \"counter\":%d, \"battery\":%d, \"timestamp\":\"%s\" }";
 
 int _retry = 0;
+
+Preferences preferences;
+char hostname[32];
+
 void onUpdateData()
 {
   struct tmeter_data meter_data;
@@ -214,7 +222,7 @@ void onConnectionEstablished()
       SerialDebug.println("End Failed");
     }
   });
-  ArduinoOTA.setHostname("EVERBLUREADER");
+  ArduinoOTA.setHostname(hostname);
   ArduinoOTA.begin();
 
   mqtt.subscribe("everblu/cyble/trigger", [](const String& message) {
@@ -225,6 +233,7 @@ void onConnectionEstablished()
     }
   });
 
+/*
   SerialDebug.println("> Send MQTT config for HA.");
   // Auto discovery
   delay(50); // Do not remove
@@ -236,11 +245,27 @@ void onConnectionEstablished()
   delay(50); // Do not remove
   mqtt.publish("homeassistant/sensor/water_meter_timestamp/config", jsonDiscoveryDevice4, true);
   delay(50); // Do not remove
+*/
 
   onScheduled();
 }
 
-Preferences preferences;
+
+
+void stop_error() 
+{
+   // Blink RED 10 time
+  for (int i =0; i<10; i++) {
+    delay(240);
+    DotStar_SetPixelColor(DOTSTAR_RED, true);
+    digitalWrite(LED_BUILTIN, LOW); 
+    delay(10);
+    digitalWrite(LED_BUILTIN, HIGH); 
+    DotStar_Clear();
+  }
+  // Sleep forever
+  deep_sleep(0);
+}
 
 void setup()
 {
@@ -253,6 +278,15 @@ void setup()
   DotStar_Clear();
 	DotStar_SetBrightness( MY_RGB_BRIGHTNESS );    
 
+  // Set hostanme
+  uint32_t chipId = 0;
+  for (int i=0; i<17; i=i+8) {
+    chipId |= ((ESP.getEfuseMac() >> (40 - i)) & 0xff) << i;
+  }
+  // Set Network Hostname
+  //sprintf_P(hostname, PSTR("everblu-cyble-%04x"), chipId & 0xFFFF );
+  sprintf_P(hostname, PSTR("everblu-cyble-%02d-%07d"), METER_YEAR, METER_SERIAL );
+
   // Wait for serial to be up in 2s
   while (millis()<2000) {
     delay(200);
@@ -261,11 +295,10 @@ void setup()
     delay(50);
     digitalWrite(LED_BUILTIN, HIGH); 
     DotStar_Clear();
-    SerialDebug.print('.');
   }
 
   // Open Preferences, Namespace name is limited to 15 chars.
-  preferences.begin("everblu-meter", false);
+  preferences.begin("everblu-cyble", false);
   // Remove all preferences under the opened namespace
   //preferences.clear();
   // Or remove the frequency key only
@@ -273,10 +306,12 @@ void setup()
 
   // Get the frequency value, if the key does not exist, return a default value of 0
   float frequency = preferences.getFloat("frequency", 0.0f);
+  float f_start = 0.0f;
+  float f_end = 0.0f;
 
   SerialDebug.println();
   SerialDebug.println("===========================");
-  SerialDebug.println("EverBlu Meter Reading");
+  SerialDebug.println(hostname);
   SerialDebug.print ("Wakeup by    : "); show_wakeup_reason();
   SerialDebug.printf("Meter Year   : %02d\n", METER_YEAR);
   SerialDebug.printf("Meter Serial : %06d\n", METER_SERIAL);
@@ -284,40 +319,53 @@ void setup()
   SerialDebug.printf("Frequency    : %.4fMHz\n", frequency);
   SerialDebug.println("===========================");
 
-
-
-  mqtt.setMaxPacketSize(1024);
-  //mqtt.enableDebuggingMessages(true);
-
-  bool is_cc = cc1101_init(433.825f,true);
-
-  if (!is_cc) {
+  if (!cc1101_init(433.825f,true)) {
     SerialDebug.print("Unable to find CC1101 Chip !!\n");
-    // Blink RED 10 time
-    for (int i =0; i<10; i++) {
-      delay(240);
-      DotStar_SetPixelColor(DOTSTAR_RED, true);
-      digitalWrite(LED_BUILTIN, LOW); 
-      delay(10);
-      digitalWrite(LED_BUILTIN, HIGH); 
-      DotStar_Clear();
-    }
-    // Sleep
-    deep_sleep();
+    stop_error();
   }
 
   SerialDebug.printf("Found CC1101\n");
   DotStar_SetPixelColor(DOTSTAR_GREEN, true);
-  delay(500);
-  DotStar_Clear();
+
+  // Start network stuff
+  mqtt.setMqttClientName(hostname);
+  mqtt.setWifiCredentials(WIFI_SSID, WIFI_PASS);
+  //mqtt.setWifiCredentials("CH2I-HOTSPOT", "Wireless@Ch2i");
+  //mqtt.setMqttServer(MQTT_SERVER, MQTT_USER, MQTT_PASS, MQTT_PORT); 
+  mqtt.setMqttServer(MQTT_SERVER); // default no user/pass and port 1883
+  //mqtt.setMqttServer("192.168.1.8"); // default no user/pass and port 1883
+  mqtt.setMaxPacketSize(1024);
+  // Optional functionalities of EspMQTTClient
+  mqtt.enableDebuggingMessages(); // Enable debugging messages sent to serial output
+  mqtt.enableHTTPWebUpdater(); // Enable the web updater. User and password default to values of MQTTUsername and MQTTPassword. These can be overridded with enableHTTPWebUpdater("user", "password").
+  mqtt.enableOTA(); // Enable OTA (Over The Air) updates. Password defaults to MQTTPassword. Port is the default OTA port. Can be overridden with enableOTA("password", port).
+  //mqtt.enableLastWillMessage("TestClient/lastwill", "I am going offline");  // You can activate the retain flag by setting the third parameter to true
+
+  // Wait for WiFi and MQTT connected for 30s since start
+  int time_out = 30;
+  while (!mqtt.isConnected() && time_out-- ) {
+    mqtt.loop();
+    delay(900);
+    DotStar_SetPixelColor(DOTSTAR_MAGENTA, true);
+    digitalWrite(LED_BUILTIN, LOW); 
+    mqtt.loop();
+    delay(100);
+    digitalWrite(LED_BUILTIN, HIGH); 
+    DotStar_Clear();
+  }
+
+  if (!mqtt.isConnected()) {
+    stop_error();
+  }
+
+  SerialDebug.printf_P(PSTR("Connected WiFi MQTT in %ds\r\n"), 30-time_out);
 
   // Scan for correct frequency
   if ( frequency == 0.0f ) {
     struct tmeter_data meter_data;
-    float f_start = 0.0f;
-    float f_end = 0.0f;
     // Use this piece of code to find the right frequency.
     for (frequency = 433.76f; frequency < 433.890f; frequency += 0.0005f) {
+      mqtt.loop();
       SerialDebug.printf_P(PSTR("Test frequency : %.4fMHz"), frequency);
       DotStar_SetPixelColor(DOTSTAR_BLUE, true);
       delay(250);
@@ -364,26 +412,36 @@ void setup()
     DotStar_Clear();
     // put CC1101 to sleep mode
     cc1101_sleep();
-    // Sleep ESP32
-    deep_sleep();
+    // Retry scan in 2H
+    deep_sleep(3600 * 2);
   }
+
+  char buffer[64];
+  char topic[64];
+
+  sprintf_P(topic, PSTR("everblu/%s/%s"), hostname, "frequencies");
+  sprintf_P(buffer, PSTR("%.4f;%.4f;%.4f"), f_start, frequency, f_end);
+  mqtt.publish(topic, buffer, true);
+  delay(50);
+  sprintf_P(topic, PSTR("everblu/%s/%s"), hostname, "frequency");
+  sprintf_P(buffer, PSTR("%.4f"), frequency);
+  mqtt.publish(topic, buffer, true);
 
   SerialDebug.printf_P(PSTR("Setting to %fMHz\n"), frequency);
   DotStar_SetPixelColor(DOTSTAR_GREEN, true);
-  //delay(500);
-  //DotStar_Clear();
-  //cc1101_init(frequency);
+  delay(500);
+  DotStar_Clear();
+  cc1101_init(frequency);
 
   // put CC1101 to sleep mode
   cc1101_sleep();
-  // Sleep ESP32
-  deep_sleep();
+  // do nothing for now
+  deep_sleep(0);
 
   // Use this piece of code to test
   //struct tmeter_data meter_data;
   //meter_data = get_meter_data();
   //SerialDebug.printf("\nLiters : %d\nBattery (in months) : %d\nCounter : %d\nTime start : %d\nTime end : %d\n\n", meter_data.liters, meter_data.battery_left, meter_data.reads_counter, meter_data.time_start, meter_data.time_end);
-
 }
 
 void loop()
