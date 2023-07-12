@@ -17,5 +17,4 @@ int encode2serial_1_3(uint8_t *inputBuffer, int inputBufferLen, uint8_t *outputB
 int Make_Radian_Master_req(uint8_t *outputBuffer, uint8_t year, uint32_t serial);
 
 void show_wakeup_reason();
-void deep_sleep();
-void light_sleep();
+void deep_sleep(uint32_t seconds);
