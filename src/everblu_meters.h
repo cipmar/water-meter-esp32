@@ -24,6 +24,8 @@
 #endif
 #endif
 
+#define CRLF "\r\n"
+
 #if defined (ESP32C3)
 #include "driver/adc.h"
 #include "esp_adc_cal.h"
