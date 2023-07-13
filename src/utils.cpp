@@ -9,65 +9,56 @@ void show_in_hex(uint8_t* buffer, size_t len)
   	int i=0;
 	for (i=0 ; i<len ; i++) {
 		if (!(i % 16)) {
-			SerialDebug.println();
+			SerialDebug.print(CRLF);
 		}
 		SerialDebug.printf("%02X ", buffer[i]);
 	}
-	SerialDebug.println();
+	SerialDebug.print(CRLF);
 }
 
 void show_in_hex_array(uint8_t* buffer, size_t len)
 {
 	for (int i=0 ; i<len ; i++) {
     	if (!(i % 16) && i > 0) {
-			SerialDebug.println();
+			SerialDebug.print(CRLF);
 		}
     	SerialDebug.printf("0x%02X, ", buffer[i]);
 	}
-  	SerialDebug.println("");
+  	SerialDebug.print(CRLF);
 }
 
-void show_in_hex_one_line(uint8_t* buffer, size_t len) {
+void show_in_hex_one_line(uint8_t* buffer, size_t len)
+{
 	for (int i=0 ; i<len ; i++) {
     	SerialDebug.printf("%02X ", buffer[i]);
 	}
 }
 
-void show_in_hex_one_line_GET(uint8_t* buffer, size_t len) {
+void show_in_hex_one_line_GET(uint8_t* buffer, size_t len)
+{
 	for (int i=0 ; i<len ; i++) {
     	SerialDebug.printf("%02XS", buffer[i]);
 	}
 }
 
-void show_in_bin(uint8_t* buffer, size_t len) {
+void show_in_bin(uint8_t* buffer, size_t len)
+{
 	const uint8_t *ptr;
 	uint8_t mask;
 	for ( ptr = buffer; len--; ptr++ ) {		
 		for ( mask = 0x80 ; mask ; mask >>= 1 ) {
-			SerialDebug.print(  (mask & *ptr) ?  "1": "0");
+			SerialDebug.print((mask & *ptr) ?  "1":"0");
 		}
 		SerialDebug.print(" ");
 	}
-	SerialDebug.print("\n");
+	SerialDebug.print(CRLF);
 }
-
-void print_time(void)
-{
-  time_t rawtime;
-  struct tm * timeinfo;
-  char buffer [80];
-  time (&rawtime);
-  timeinfo = localtime (&rawtime);
-  strftime (buffer,80,"%d/%m/%Y %X",timeinfo);
-  SerialDebug.printf("%s",buffer);
-}
-
 
 /*----------------------------------------------------------------------------*/
-#define		CRC_START_KERMIT	0x0000
-#define		CRC_POLY_KERMIT		0x8408
-static uint8_t		crc_tab_init		= 0;
-static uint16_t		crc_tab[256];
+#define	CRC_START_KERMIT	0x0000
+#define	CRC_POLY_KERMIT		0x8408
+static uint8_t	crc_tab_init = 0;
+static uint16_t	crc_tab[256];
 /*----------------------------------------------------------------------------*/
 /* https://www.libcrc.org/
  * static void init_crc_tab( void );
@@ -242,33 +233,32 @@ int Make_Radian_Master_req(uint8_t *outputBuffer,uint8_t year,uint32_t serial)
 
 void show_wakeup_reason()
 {
-  esp_sleep_wakeup_cause_t wakeup_reason;
+    esp_sleep_wakeup_cause_t wakeup_reason;
 
-  wakeup_reason = esp_sleep_get_wakeup_cause();
+    wakeup_reason = esp_sleep_get_wakeup_cause();
 
-  switch(wakeup_reason)
-  {
-    case ESP_SLEEP_WAKEUP_EXT0 : SerialDebug.print("external signal using RTC_IO"); break;
-    case ESP_SLEEP_WAKEUP_EXT1 : SerialDebug.print("external signal using RTC_CNTL"); break;
-    case ESP_SLEEP_WAKEUP_TIMER : SerialDebug.print("timer"); break;
-    case ESP_SLEEP_WAKEUP_TOUCHPAD : SerialDebug.print("touchpad"); break;
-    case ESP_SLEEP_WAKEUP_ULP : SerialDebug.print("ULP program"); break;
-    default : SerialDebug.printf_P(PSTR("not caused by deep sleep: %d"),wakeup_reason); break;
-  }
-  SerialDebug.println();
+    switch(wakeup_reason) {
+        case ESP_SLEEP_WAKEUP_EXT0 : SerialDebug.print("external signal using RTC_IO"); break;
+        case ESP_SLEEP_WAKEUP_EXT1 : SerialDebug.print("external signal using RTC_CNTL"); break;
+        case ESP_SLEEP_WAKEUP_TIMER : SerialDebug.print("timer"); break;
+        case ESP_SLEEP_WAKEUP_TOUCHPAD : SerialDebug.print("touchpad"); break;
+        case ESP_SLEEP_WAKEUP_ULP : SerialDebug.print("ULP program"); break;
+        default : SerialDebug.printf_P(PSTR("not from sleep:%d"),wakeup_reason); break;
+    }
+    SerialDebug.print(CRLF);
 }
 
 void deep_sleep(uint32_t seconds)
 {
 	SerialDebug.print(F("Going to deep sleep mode for"));
 	if (seconds) {
-		SerialDebug.printf_P(PSTR(" %d seconds"), seconds);
+		SerialDebug.printf_P(PSTR(" %d seconds" CRLF), seconds);
 		esp_sleep_enable_timer_wakeup(seconds * 1000 * 1000);
 	} else {
-		SerialDebug.println(F("ever"));
+		SerialDebug.print(F("ever" CRLF));
 	}
-	SerialDebug.println();
-	for (int i = MY_RGB_BRIGHTNESS; i > 16; i--) {
+    // Dum down RGB LED
+	for (int i = MY_RGB_BRIGHTNESS ; i > 16 ; i--) {
 		DotStar_SetBrightness(i);
 		DotStar_SetPixelColor(DOTSTAR_YELLOW, true);
 		delay(10);
