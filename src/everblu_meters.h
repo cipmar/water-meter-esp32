@@ -26,6 +26,10 @@
 
 #define CRLF "\r\n"
 
+#define REG_SCAN_LOOP	     128 // Allow up and dow 128 to REG_DEFAULT while scanning 
+
+char * getDate() ;
+
 #if defined (ESP32C3)
 #include "driver/adc.h"
 #include "esp_adc_cal.h"
