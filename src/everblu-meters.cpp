@@ -417,9 +417,11 @@ void setup()
     //preferences.remove("frequency");
 
     // Get the frequency value, if the key does not exist, return a default value of 0
-    //preferences.putFloat("frequency", 433.82000f);
-    //preferences.putFloat("frequency", 0.0f);
+    #if defined FORCE_SCAN
     float frequency = preferences.getFloat("frequency", 0.0f);
+    #else 
+    float frequency = preferences.getFloat("frequency",  433.82000f);
+    #endif
     float f_start = 0.0f;
     float f_end = 0.0f;
 
@@ -654,7 +656,7 @@ void loop()
 
         // If you need specific individual values (not json object) please selec
         // the one you need below
-        /*
+        #ifdef PUBLISH_RAW
         mqtt.publish(topic + "liters", String(meter_data.liters, DEC), true);
         delay_loop(50); // Do not remove
         mqtt.publish(topic + "read", String(meter_data.reads_counter, DEC), true);
@@ -671,7 +673,7 @@ void loop()
         delay_loop(50); // Do not remove
         mqtt.publish(topic + "lqi",  String(meter_data.lqi, DEC), true); 
         delay_loop(50); // Do not remove
-        */
+        #endif
 
     } else {
 
