@@ -113,6 +113,8 @@ void deep_sleep(uint32_t seconds)
 		DotStar_SetPixelColor(DOTSTAR_YELLOW, true);
 		delay_loop(10);
 	}
+    DotStar_Clear();
+
     WiFi.disconnect();
 	esp_deep_sleep_start();
 }
