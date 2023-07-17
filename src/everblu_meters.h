@@ -12,6 +12,7 @@
 #include "cc1101.h"
 #include "rgbled.h"
 #include "utils.h"
+#include <LC709203F.h>
 
 #ifndef LED_BUILTIN
 // Change this pin if needed
@@ -25,7 +26,7 @@
 #endif
 
 #define CRLF "\r\n"
-
+#define uS_TO_S_FACTOR 1000000ULL 
 #define REG_SCAN_LOOP	     128 // Allow up and dow 128 to REG_DEFAULT while scanning 
 
 char * getDate() ;
@@ -34,6 +35,9 @@ char * getDate() ;
 #include "driver/adc.h"
 #include "esp_adc_cal.h"
 #define BATT_CHANNEL ADC1_CHANNEL_4  // Battery voltage ADC input (GPIO4)
+// Battery divider resistor values
+#define UPPER_DIVIDER 470
+#define LOWER_DIVIDER 100
 #endif
 
 
