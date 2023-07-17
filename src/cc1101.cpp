@@ -806,7 +806,7 @@ struct tmeter_data get_meter_data(void)
 	sdata.liters = 0;
 	sdata.battery_left = 0;
 	sdata.reads_counter = 0;
-	sdata.ok = false;
+	sdata.error = 0;
 
     if (rxBuffer_size) {
         if (debug_out) {
@@ -816,9 +816,16 @@ struct tmeter_data get_meter_data(void)
         meter_data_size = decode_4bitpbit_serial(rxBuffer, rxBuffer_size, meter_data);
         // show_in_hex(meter_data,meter_data_size);
         sdata = parse_meter_report(meter_data, meter_data_size);
-        sdata.ok = true;
+        // Check for vaid data
+        if ( sdata.liters>0 && sdata.reads_counter>0 && sdata.battery_left>0) {
+            sdata.error = sdata.reads_counter;
+        } else {
+            sdata.error = -1;
+            SerialDebug.printf("Invalid on REC\n");
+        }
     } else {
         if (debug_out) {
+            sdata.error = -2;
             SerialDebug.printf("TMO on REC\n");
         }
     }

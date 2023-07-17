@@ -22,7 +22,7 @@ struct tmeter_data {
 	int time_end;       // like 4pm
   int8_t rssi;        // Signal RSSI
   int8_t lqi;         // Signal LQI
-	bool ok;            // True if read was ok
+	int error;          // 0:No data 1:OK  -1:wrong data
 };
 
 #define REG_DEFAULT 	0x10AF75 // CC1101 register values for 433.82MHz
