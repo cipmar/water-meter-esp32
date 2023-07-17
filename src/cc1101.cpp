@@ -29,7 +29,8 @@ uint8_t PA[] = { 0x60,0x00,0x00,0x00,0x00,0x00,0x00,0x00, };
 uint8_t CC1101_status_state = 0;
 uint8_t CC1101_status_FIFO_FreeByte = 0;
 uint8_t CC1101_status_FIFO_ReadByte = 0;
-
+int8_t  CC1101_rssi;
+int8_t  CC1101_lqi;
 
 #define TX_LOOP_OUT 300
 /*---------------------------[CC1100 - R/W offsets]------------------------------*/
@@ -243,43 +244,44 @@ void cc1101_reset(void)
     CC1101_CMD(SFRX); 
 }
 
+// Datasheet formula is easy
+// Frequency = ( 26000000 / 2^16 ) * Fregister
+// so default F register 0x10AF75 is 433.8198 MHz
+// F register = Frequency / ( 26000000 / 2^16 ) 
 void setMHZ(float mhz) 
 {
-    byte freq2 = 0;
-    byte freq1 = 0;
-    byte freq0 = 0;
+    float reg = mhz / (26.0f/65536.0f);
+    uint32_t freg = (uint32_t) reg;
 
-    //Serial.printf("%.4f Mhz : ", mhz);
-    for (bool i = 0; i == 0;) {
-        if (mhz >= 26) {
-            mhz -= 26;
-            freq2 += 1;
-        } else if (mhz >= 0.1015625) {
-            mhz -= 0.1015625;
-            freq1 += 1;
-        } else if (mhz >= 0.00039675) {
-            mhz -= 0.00039675;
-            freq0 += 1;
-        } else { 
-            i = 1; 
-        }
-    }
-    if (freq0 > 255) { 
-        freq1 += 1; 
-        freq0 -= 256; 
-    }
-    
-    //SerialDebug.printf("FREQ2=0x%02X ", freq2);
-    //SerialDebug.printf("FREQ1=0x%02X ", freq1);
-    //SerialDebug.printf("FREQ0=0x%02X ", freq0);
-    //SerialDebug.printf("\n");
-    
+    uint8_t freq2 = (freg >> 16) & 0xFF ;
+    uint8_t freq1 = (freg >>  8) & 0xFF ;
+    uint8_t freq0 = freg & 0xFF ;
+   
+    //printf(" %.4fMHz=0x%02X%02X%02X ", mhz, freq2, freq1, freq0);
     halRfWriteReg(FREQ2, freq2);
     halRfWriteReg(FREQ1, freq1);
     halRfWriteReg(FREQ0, freq0);
 }
 
-void cc1101_configureRF_0(float freq)
+// Datasheet formula is easy
+// Frequency = ( 26000000 / 2^16 ) * Fregister
+void setFREQxRegister(uint32_t freg) 
+{
+    // Skip only 3 bytes
+    freg &= 0xFFFFFF;
+
+    uint8_t freq2 = (freg >> 16);
+    uint8_t freq1 = (freg >>  8) & 0xFF ;
+    uint8_t freq0 = freg & 0xFF ;
+
+    // float freq = (26.0f/65536.0f) * (float) freg;
+    //printf(" 0x%02X%02X%02X %.4fMHz ", freq2, freq1, freq0, freq);
+    halRfWriteReg(FREQ2, freq2);
+    halRfWriteReg(FREQ1, freq1);
+    halRfWriteReg(FREQ0, freq0);
+}
+
+void cc1101_configureRF_0(float freq, uint32_t freg)
 {
     RF_config_u8 = 0;
     //
@@ -296,7 +298,15 @@ void cc1101_configureRF_0(float freq)
     halRfWriteReg(PKTCTRL0, 0x00);//fix length , no CRC
     halRfWriteReg(FSCTRL1, 0x08); //Frequency Synthesizer Control
 
-    setMHZ(freq);
+    if ( freq != 0.0f ) {
+    	setMHZ(freq);
+    } else if ( freg != 0 ) {
+    	setFREQxRegister(freg);
+    } else {
+        fprintf(stderr, "Wrong frequency parameter, set to 433.82MHz\n");
+       	//setMHZ(433.8200f);
+        setFREQxRegister(REG_DEFAULT); // value for 433.82MHz is 0x10AF75
+    }
     //halRfWriteReg(FREQ2,0x10);   //Frequency Control Word, High Byte  Base frequency = 433.82
     //halRfWriteReg(FREQ1,0xAF);   //Frequency Control Word, Middle Byte
     //halRfWriteReg(FREQ0, freq0);
@@ -333,8 +343,9 @@ void cc1101_configureRF_0(float freq)
     SPIWriteBurstReg(PATABLE_ADDR, PA, 8);
 }
 
-bool  cc1101_init(float freq, bool show)
+bool  cc1101_init(float freq,  uint32_t freg, bool show)
 {
+    bool ret = false;
     pinMode(GDO0, INPUT_PULLUP);
     // to use SPI pi@MinePi ~ $ gpio unload spi  then gpio load spi   
     // sinon pas de MOSI ni pas de CSn , buffer de 4kB
@@ -345,16 +356,12 @@ bool  cc1101_init(float freq, bool show)
     cc1101_reset();
     delay(1); //1ms
 
-    if (!get_cc1101_version(show)) {
-        SerialDebug.println("Can't find CC1101 chip");
-        return false;
-    }
-
+    ret =get_cc1101_version(show);
     delay(1);
     //show_cc1101_registers_settings();
     //delay(1);
-    cc1101_configureRF_0(freq);
-    return   true;
+    cc1101_configureRF_0(freq, freg);
+    return ret;
 }
 
 void cc1101_sleep() 
@@ -398,10 +405,9 @@ bool get_cc1101_version(bool show)
     uint8_t version = halRfReadReg(VERSION_ADDR);
     bool found = version!=0x00 && version!=0xFF ;
     if (show) {
-        SerialDebug.printf("CC1101 Number  : 0x%02X\n", part_number);  
-        SerialDebug.printf("CC1101 Version : 0x%02X %s\n", version, found ? "Found Ok" : "** Error **");  
+        SerialDebug.printf("CC1101 Version : 0x%02X%02X %s\n", part_number, version);  
     }
-    return found;
+    return version==0x04 || version==0x14;
 }
 
 
@@ -452,13 +458,13 @@ uint8_t is_look_like_radian_frame(uint8_t* buffer, size_t len)
 uint8_t cc1101_check_packet_received(void)
 {
     uint8_t rxBuffer[100];
-    uint8_t l_nb_byte, l_Rssi_dbm, l_lqi, l_freq_est, pktLen;
+    uint8_t l_nb_byte, l_freq_est, pktLen;
     pktLen = 0;
     if (digitalRead(GDO0) == true) {
         // get RF info at beginning of the frame
-        l_lqi = halRfReadReg(LQI_ADDR);
+        CC1101_lqi = halRfReadReg(LQI_ADDR);
         l_freq_est = halRfReadReg(FREQEST_ADDR);
-        l_Rssi_dbm = cc1100_rssi_convert2dbm(halRfReadReg(RSSI_ADDR));
+        CC1101_rssi = cc1100_rssi_convert2dbm(halRfReadReg(RSSI_ADDR));
 
         while (digitalRead(GDO0) == true) {
             delay(5); //wait for some byte received
@@ -469,9 +475,8 @@ uint8_t cc1101_check_packet_received(void)
             }
         }
         if (is_look_like_radian_frame(rxBuffer, pktLen)) {
-            SerialDebug.printf("\n");
-            print_time();
-            SerialDebug.printf(" bytes=%u rssi=%u lqi=%u F_est=%u ", pktLen, l_Rssi_dbm, l_lqi, l_freq_est);
+            SerialDebug.printf("\n%s", getDate());
+            SerialDebug.printf(" bytes=%u rssi=%u lqi=%u F_est=%u ", pktLen, CC1101_rssi, CC1101_lqi, l_freq_est);
             show_in_hex_one_line(rxBuffer, pktLen);
             //show_in_bin(rxBuffer,l_nb_byte);     
         } else {
@@ -502,6 +507,9 @@ struct tmeter_data parse_meter_report(uint8_t *decoded_buffer, uint8_t size)
 {
     struct tmeter_data data;
     if (size >= 30) {
+        // Fill signal values received in data incoming
+        data.rssi = CC1101_rssi;
+        data.lqi = CC1101_lqi;
         //SerialDebug.printf("\n%u/%u/20%u %u:%u:%u ",decoded_buffer[24],decoded_buffer[25],decoded_buffer[26],decoded_buffer[28],decoded_buffer[29],decoded_buffer[30]);
         //SerialDebug.printf("%u litres ",decoded_buffer[18]+decoded_buffer[19]*256 + decoded_buffer[20]*65536 + decoded_buffer[21]*16777216);
         data.liters = decoded_buffer[18] + decoded_buffer[19] * 256 + decoded_buffer[20] * 65536 + decoded_buffer[21] * 16777216;
@@ -589,7 +597,7 @@ int receive_radian_frame(int size_byte, int rx_tmo_ms, uint8_t*rxBuffer, int rxB
     uint16_t l_total_byte = 0;
     uint16_t l_radian_frame_size_byte = ((size_byte * (8 + 3)) / 8) + 1;
     int l_tmo = 0;
-    uint8_t l_Rssi_dbm, l_lqi, l_freq_est;
+    uint8_t  l_freq_est;
 
     if (debug_out) {
         SerialDebug.printf("\nsize_byte=%d  l_radian_frame_size_byte=%d\n", size_byte, l_radian_frame_size_byte);
@@ -639,11 +647,12 @@ int receive_radian_frame(int size_byte, int rx_tmo_ms, uint8_t*rxBuffer, int rxB
         return 0;
     }
 
-    l_lqi = halRfReadReg(LQI_ADDR);
+    CC1101_lqi = halRfReadReg(LQI_ADDR);
     l_freq_est = halRfReadReg(FREQEST_ADDR);
-    l_Rssi_dbm = cc1100_rssi_convert2dbm(halRfReadReg(RSSI_ADDR));
+    CC1101_rssi = cc1100_rssi_convert2dbm(halRfReadReg(RSSI_ADDR));
+
     if (debug_out) {
-        SerialDebug.printf(" rssi=%u lqi=%u F_est=%u \n", l_Rssi_dbm, l_lqi, l_freq_est);
+     	SerialDebug.printf(" bytes=%u rssi=%d lqi=%d F_est=%u ",l_byte_in_rx,CC1101_rssi,CC1101_lqi,l_freq_est);
     }
 
     halRfWriteReg(SYNC1, 0xFF);   //11111111
@@ -783,16 +792,22 @@ struct tmeter_data get_meter_data(void)
     halRfWriteReg(MDMCFG2, 0x02); //Modem Configuration   2-FSK;  no Manchester ; 16/16 sync word bits detected   
     halRfWriteReg(PKTCTRL0, 0x00); //fix packet len
 
-    //delay(30); //43ms de bruit
+    delay(30); //43ms de bruit
     /*34ms 0101...01  14.25ms 000...000  14ms 1111...11111  83.5ms de data acquitement*/
     if (!receive_radian_frame(0x12, 150, rxBuffer, sizeof(rxBuffer))) { 
         if (debug_out) {
             SerialDebug.printf("TMO on REC\n");
         }
     }
-    //delay(30); //50ms de 111111  , mais on a 7+3ms de printf et xxms calculs
+    delay(30); //50ms de 111111  , mais on a 7+3ms de printf et xxms calculs
     /*34ms 0101...01  14.25ms 000...000  14ms 1111...11111  582ms de data avec l'index */
     rxBuffer_size = receive_radian_frame(0x7C, 700, rxBuffer, sizeof(rxBuffer));
+
+	sdata.liters = 0;
+	sdata.battery_left = 0;
+	sdata.reads_counter = 0;
+	sdata.ok = false;
+
     if (rxBuffer_size) {
         if (debug_out) {
             //SerialDebug.printf("rxBuffer:\n");
@@ -801,7 +816,7 @@ struct tmeter_data get_meter_data(void)
         meter_data_size = decode_4bitpbit_serial(rxBuffer, rxBuffer_size, meter_data);
         // show_in_hex(meter_data,meter_data_size);
         sdata = parse_meter_report(meter_data, meter_data_size);
-
+        sdata.ok = true;
     } else {
         if (debug_out) {
             SerialDebug.printf("TMO on REC\n");
