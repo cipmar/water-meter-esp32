@@ -2,6 +2,7 @@
 #include <Preferences.h>
 #include <EspMQTTClient.h>
 #include <ArduinoJson.h>
+#include <string.h>
 #include "esp_sntp.h"
 #include "timezone.h"
 #include "everblu_meters.h"
@@ -16,6 +17,14 @@ uint32_t next_wake = 0;
 struct tmeter_data meter_data;
 float f_min, f_max ; // Scan results
 uint32_t r_min, r_max ; // Scan results
+volatile bool time_synched = false;
+
+// Battery related
+uint16_t bat_pc  ;
+uint16_t bat_mv  ;
+uint16_t bat_dir ;
+uint16_t bat_vin ;
+
 
 void delay_loop(unsigned long _delay) 
 {
@@ -43,25 +52,70 @@ void show_wakeup_reason()
     SerialDebug.print(CRLF);
 }
 
+// Return a *rough* estimate of the current battery voltage
+uint16_t GetVinVoltage()
+{
+#ifdef BAT_VOLTAGE    
+    static unsigned long nextVoltage = millis() + 1000;
+    static float lastMeasuredVoltage;
+    uint32_t raw, mv;
+    esp_adc_cal_characteristics_t chars;
+
+    // only check voltage every 1 second
+    if ( nextVoltage - millis() > 0 ) {
+        nextVoltage = millis() + 1000; 
+
+        // grab latest voltage
+        analogRead(BAT_VOLTAGE);  // Just to get the ADC setup
+        raw = adc1_get_raw(BATT_CHANNEL);  // Read of raw ADC value
+
+        // Get ADC calibration values
+        esp_adc_cal_characterize(ADC_UNIT_1,ADC_ATTEN_11db ,ADC_WIDTH_BIT_12, 1100, &chars);
+
+        // Convert to calibrated mv then volts
+        mv = esp_adc_cal_raw_to_voltage(raw, &chars) * (LOWER_DIVIDER+UPPER_DIVIDER) / LOWER_DIVIDER;
+        // When battery is charging or charged, sometime this value may complely off range (due to reverse charging current I guess)
+        if (mv > 4800) {
+          mv = 4800;
+        }
+
+        //lastMeasuredVoltage = (float)mv / 1000.0;
+        lastMeasuredVoltage = (uint16_t) mv;
+
+        //SerialDebug.printf_P(PSTR(" VIN:%dmV\r\n"), mv);
+
+        // Vin > 4.4V looks like we are usb connected
+        if (mv >= 4400) {
+            // Whaever you like
+        } 
+    }
+
+    return ( lastMeasuredVoltage );
+#else
+    return 0;
+#endif
+}
+
+
+
 void deep_sleep(uint32_t seconds)
 {
 	SerialDebug.print(F("Going to deep sleep mode for"));
 	if (seconds) {
 		SerialDebug.printf_P(PSTR(" %d seconds" CRLF), seconds);
-		esp_sleep_enable_timer_wakeup(seconds * 1000 * 1000);
+		esp_sleep_enable_timer_wakeup(  ((uint64_t) seconds) * uS_TO_S_FACTOR);
 	} else {
 		SerialDebug.print(F("ever" CRLF));
 	}
-    // Dum down RGB LED
+    // Dim down RGB LED
 	for (int i = MY_RGB_BRIGHTNESS ; i > 16 ; i--) {
 		DotStar_SetBrightness(i);
 		DotStar_SetPixelColor(DOTSTAR_YELLOW, true);
 		delay_loop(10);
 	}
+    WiFi.disconnect();
 	esp_deep_sleep_start();
 }
-
-
 
 void printMeterData(struct tmeter_data * data)
 {
@@ -84,18 +138,24 @@ void printLocalTime()
   Serial.println(&timeinfo, "%B %d %Y %H:%M:%S");
 }
 
+
 // To be reworked for more robust code
-char * getDate() 
+char * getDate(time_t rawtime) 
 {
-    time_t rawtime;
     struct tm * timeinfo;
-    time ( &rawtime );
     timeinfo = localtime ( &rawtime );
     char * str = asctime(timeinfo) ;
     // remove ending \n
     str[strlen(str)-1] ='\0';
     return str;
 }
+
+// To be reworked for more robust code
+char * getDate() 
+{
+   return getDate( time(nullptr) );
+}
+
 
 
 void printDate( time_t tnow, tm *ptm)
@@ -105,13 +165,6 @@ void printDate( time_t tnow, tm *ptm)
                             ptm->tm_hour, ptm->tm_min, ptm->tm_sec);
                         
     SerialDebug.printf("Current Time       : %s" CRLF, String(tnow, DEC).c_str());
-}
-
-bool UpdateData()
-{
-
-
-    return true;
 }
 
 char * formatLocalTime() 
@@ -140,6 +193,8 @@ void onNtpSync(struct timeval *t)
     }
     //Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
     
+    time_synched = true;
+
     // Get current timestamp in UTC
     now = time(nullptr);
     // Add 24H (always in UTC)
@@ -153,7 +208,7 @@ void onNtpSync(struct timeval *t)
 
     // We will calculate delay for next measure reading 
     // We passed programmed time for today schedule for tomorrow ?
-    if (nowinfo.tm_hour > WAKE_HOUR) {
+    if (nowinfo.tm_hour >= WAKE_HOUR) {
         tominfo->tm_hour = WAKE_HOUR;
         tominfo->tm_min = 0;
         tominfo->tm_sec = 0;
@@ -180,6 +235,7 @@ void onConnectionEstablished()
 
     // set notification call-back function
     configTzTime(TZ_Europe_Paris, "fr.pool.ntp.org", "time.nist.gov");
+    sntp_set_sync_mode(SNTP_SYNC_MODE_IMMED);
     sntp_set_time_sync_notification_cb( onNtpSync );
 
     ArduinoOTA.onStart([]() {
@@ -217,28 +273,6 @@ void onConnectionEstablished()
 
     ArduinoOTA.setHostname(hostname);
     ArduinoOTA.begin();
-
-    //delay_loop(500);
-    /*
-    mqtt.subscribe(topic + "trigger", [](const String& message) {
-        if (message.length() > 0) {
-            SerialDebug.print("Update data from meter from MQTT trigger" CRLF);
-            onUpdateData();
-        }
-    });
-
-    SerialDebug.println("> Send MQTT config for HA.");
-    // Auto discovery
-    delay(50); // Do not remove
-    mqtt.publish("homeassistant/sensor/water_meter_value/config", jsonDiscoveryDevice1, true);
-    delay(50); // Do not remove
-    mqtt.publish("homeassistant/sensor/water_meter_battery/config", jsonDiscoveryDevice2, true);
-    delay(50); // Do not remove
-    mqtt.publish("homeassistant/sensor/water_meter_counter/config", jsonDiscoveryDevice3, true);
-    delay(50); // Do not remove
-    mqtt.publish("homeassistant/sensor/water_meter_timestamp/config", jsonDiscoveryDevice4, true);
-    delay(50); // Do not remove
-    */
 }
 
 void stop_error(uint32_t wakeup) 
@@ -264,7 +298,7 @@ char * frequency_str( float _frequency)
 }
 
 // test a read on specified frequency using CC1101 register settings
-bool test_frequency_register(uint32_t reg)  
+int test_frequency_register(uint32_t reg)  
 {
     char buff[256];
 
@@ -285,7 +319,7 @@ bool test_frequency_register(uint32_t reg)
     //}
     meter_data = get_meter_data();
     // Got datas ?
-    if (meter_data.ok) {
+    if (meter_data.error>0 ) {
         SerialDebug.print("** OK! **");
         // check and adjust working boundaries
         if (_frequency > f_max) {
@@ -298,7 +332,13 @@ bool test_frequency_register(uint32_t reg)
         }
         DotStar_SetPixelColor(DOTSTAR_GREEN, true);
     } else {
-        SerialDebug.print("No answer");
+        if (meter_data.error == -1 ) {
+            SerialDebug.print("Read error");
+        } else if (meter_data.error == -2 ) {
+            SerialDebug.print("Read error");
+        } else {
+            SerialDebug.print("Unknown answer");
+        }
         DotStar_SetPixelColor(DOTSTAR_ORANGE, true);
     }
 
@@ -320,16 +360,16 @@ bool test_frequency_register(uint32_t reg)
     doc["timestamp"] = time(nullptr);
     sprintf(buff, "0x%06X", reg);
     doc["register"] = buff;
-    if (meter_data.ok) {
+    doc["result"] = meter_data.error;
+    if (meter_data.error>0) {
         doc["rssi"] = meter_data.rssi ;
         doc["lqi"] = meter_data.lqi;
     }
-    doc["result"] = meter_data.reads_counter;
     serializeJson(doc, output);
     mqtt.publish(topic + "scanning", output, true); 
     delay(50);
 
-    return meter_data.ok;
+    return meter_data.error;
 }
 
 
@@ -346,6 +386,8 @@ void setup()
     delay(100); // Needed to initialize
     DotStar_Clear();
     DotStar_SetBrightness( MY_RGB_BRIGHTNESS );    
+
+    Wire.begin(I2C_SDA, I2C_SCL);
 
     // Set hostanme
     uint32_t chipId = 0;
@@ -376,10 +418,25 @@ void setup()
 
     // Get the frequency value, if the key does not exist, return a default value of 0
     //preferences.putFloat("frequency", 433.82000f);
-    preferences.putFloat("frequency", 0.0f);
+    //preferences.putFloat("frequency", 0.0f);
     float frequency = preferences.getFloat("frequency", 0.0f);
     float f_start = 0.0f;
     float f_end = 0.0f;
+
+#ifdef USE_LC709203F
+    if (lc_begin()) {
+        SerialDebug.printf_P(PSTR("Found LC70920x Version: 0x%04X\r\n"), lc_getICversion() );
+        // Set 500mAh Battery
+        lc_setPackSize(LC709203F_APA_500MAH);
+        //lc_setAlarmVoltage(3.5);
+        bat_pc  = lc_cellPercent();
+        bat_mv  = lc_cellVoltage();
+        bat_dir = lc_getCurrentDirection();
+    }
+#endif
+#ifdef BAT_VOLTAGE    
+    bat_vin = GetVinVoltage();
+#endif
 
     SerialDebug.println();
     SerialDebug.println("===========================");
@@ -389,6 +446,14 @@ void setup()
     SerialDebug.printf("Meter Serial : %06d" CRLF, METER_SERIAL);
     SerialDebug.printf("SPI Speed    : %.1fMHz" CRLF, ((float)_spi_speed) / 1000.0f / 1000.0f);
     SerialDebug.printf("Frequency    : %.4fMHz" CRLF, frequency);
+    SerialDebug.printf("Retries left : %d" CRLF, 6 -  preferences.getShort("retries", 0) );
+
+#ifdef BAT_VOLTAGE    
+    SerialDebug.printf("Vin          : %.2fV" CRLF, ((float)bat_vin)/1000.0f );
+#endif
+#ifdef USE_LC709203F
+    SerialDebug.printf("Battery      : %.1f%%  %.2fV  %d" CRLF, ((float) bat_pc)/10.0f, ((float)bat_mv)/1000.0f, bat_dir );
+#endif
     SerialDebug.println("===========================");
 
     if (!cc1101_init(0.0f, REG_DEFAULT, true)) {
@@ -413,12 +478,11 @@ void setup()
     delay(500);
     DotStar_Clear();
 
-    // Wait for WiFi and MQTT connected for 30s 
+    // Wait for WiFi and MQTT connected 
     int time_out = 0;
-    bool wifi_init = false;
     SerialDebug.print(F("Trying to connect WiFi") );
-    // 60s loop
-    while (!mqtt.isConnected() && time_out++<120 ) {
+    while (!mqtt.isConnected() ) {
+        mqtt.loop();
         delay(450);
         if (mqtt.isWifiConnected() ) {
             SerialDebug.print('*');
@@ -428,18 +492,54 @@ void setup()
             DotStar_SetPixelColor(DOTSTAR_CYAN, true);
         }
         digitalWrite(LED_BUILTIN, LOW); 
-        delay_loop(50);
+        delay(50);
         digitalWrite(LED_BUILTIN, HIGH); 
         DotStar_Clear();
+        // >60s (500ms loop)
+        if (++time_out >= 120) {
+            SerialDebug.print(F(CRLF "Unable to connect in 60s" CRLF) );
+            // Stop and retry in 1H
+            stop_error(3600);
+        }
     }
 
-    if (!mqtt.isConnected()) {
-        SerialDebug.printf_P(PSTR(CRLF "Unable to connect in %ds" CRLF), time_out/2);
-        // Stop and retry in 1H
-        stop_error(3600);
+    SerialDebug.printf_P(PSTR(CRLF "Connected in %ds" CRLF), time_out/2);
+    SerialDebug.print(F("Waiting for time sync") );
+
+    /*time_out=0;
+    while (!time_synched) {
+        mqtt.loop();
+        delay(225);
+        DotStar_SetPixelColor(DOTSTAR_PINK, true);
+        digitalWrite(LED_BUILTIN, LOW); 
+        delay(25);
+        digitalWrite(LED_BUILTIN, HIGH); 
+        DotStar_Clear();
+        // >60s (250ms loop)
+        if (++time_out >= 240) {
+            SerialDebug.print(F(CRLF "Unable to sync time in 60s" CRLF) );
+            // Stop and retry in 1H
+            stop_error(3600);
+        }
+    }*/
+    time_out=0;
+    while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED) {
+        mqtt.loop();
+        delay(225);
+        DotStar_SetPixelColor(DOTSTAR_PINK, true);
+        digitalWrite(LED_BUILTIN, LOW); 
+        delay(25);
+        digitalWrite(LED_BUILTIN, HIGH); 
+        DotStar_Clear();
+        // >60s (250ms loop)
+        if (++time_out >= 240) {
+            SerialDebug.print(F(CRLF "Unable to sync time in 60s" CRLF) );
+            // Stop and retry in 1H
+            stop_error(3600);
+        }
     }
 
-    SerialDebug.printf_P(PSTR(CRLF "Connected in %ds" CRLF), time_out);
+    SerialDebug.printf_P(PSTR(CRLF "Synced in %ds" CRLF), time_out/4);
 
     // Scan for correct frequency if not already found one in config
     if ( frequency == 0.0f ) {
@@ -467,6 +567,7 @@ void setup()
         }
 
         doc.clear();
+        output.clear();
         doc["date"] = formatLocalTime();
         doc["ts"] = time(nullptr);
         // Found frequency Range, setup in the middle
@@ -485,7 +586,6 @@ void setup()
             frequency = 0.0f;
         }
         doc["frequency"] = frequency_str(frequency);
-        output = "";
         serializeJson(doc, output);
         mqtt.publish(topic + "scan/", output, true); 
         delay(50);
@@ -504,7 +604,7 @@ void setup()
         deep_sleep(3600 * 2);
     }
 
-    SerialDebug.printf_P(PSTR("Setting to %fMHz" CRLF), frequency);
+    SerialDebug.printf_P(PSTR("Setting to %f.4fMHz" CRLF), frequency);
     DotStar_SetPixelColor(DOTSTAR_GREEN, true);
     delay(500);
     DotStar_Clear();
@@ -513,29 +613,33 @@ void setup()
 
 void loop()
 {   
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<512> doc;
     String output;
     char buff[32];
     int16_t retries = preferences.getShort("retries", 0);
 
     if (retries) {
-        SerialDebug.printf_P(PSTR("Trying Reading #%d ou of 10 from meter" CRLF), retries );
+        SerialDebug.printf_P(PSTR("Trying Reading #%d ou of #5 from meter" CRLF), retries );
     } else {
         SerialDebug.print("Reading data from meter" CRLF);
     }
 
+    // Read meter data
     meter_data = get_meter_data();
 
     doc["ts"] = time(nullptr);
     doc["date"] = getDate();
+    doc["esp_battery"]["percent"] = bat_pc/10;
+    doc["esp_battery"]["vbat"] = bat_mv;
+    doc["esp_battery"]["vin"] = bat_vin;
+    doc["esp_battery"]["dir"] = bat_dir;
 
-    if (meter_data.ok) {
+    if (meter_data.error>0) {
         printMeterData(&meter_data);
-
+        // Read successfull, clean up retries
         if (retries) {
             preferences.putShort("retries", 0);
         }
-
         doc["liters"]  = meter_data.liters;
         doc["battery"] = meter_data.battery_left;
         doc["read"] = meter_data.reads_counter;
@@ -543,10 +647,14 @@ void loop()
         doc["lqi"] = meter_data.lqi;
         sprintf_P(buff, PSTR("%02d:%02d"), meter_data.time_start, meter_data.time_end);
         doc["hours"] = buff;
+
         serializeJson(doc, output);
         mqtt.publish(topic + "json", output, true); // timestamp since epoch in UTC
-        delay_loop(50); // Do not remove
+        delay_loop(100); // Do not remove
 
+        // If you need specific individual values (not json object) please selec
+        // the one you need below
+        /*
         mqtt.publish(topic + "liters", String(meter_data.liters, DEC), true);
         delay_loop(50); // Do not remove
         mqtt.publish(topic + "read", String(meter_data.reads_counter, DEC), true);
@@ -557,25 +665,52 @@ void loop()
         delay_loop(50); // Do not remove
         mqtt.publish(topic + "date", getDate(), true); 
         delay_loop(50); // Do not remove
+        mqtt.publish(topic + "hours", buff, true); 
+        delay_loop(50); // Do not remove
+        mqtt.publish(topic + "rssi",  String(meter_data.rssi, DEC), true); 
+        delay_loop(50); // Do not remove
+        mqtt.publish(topic + "lqi",  String(meter_data.lqi, DEC), true); 
+        delay_loop(50); // Do not remove
+        */
 
     } else {
 
         SerialDebug.print("No data, are you in business hours?" CRLF);
-        SerialDebug.printf_P(PSTR("%d retries left " CRLF), 10 - retries );
-        preferences.putShort("retries", ++retries);
         doc["type"]  = "No Data";
         doc["retries"]  = retries;
         serializeJson(doc, output);
-        mqtt.publish(topic + "error", output, true); // timestamp since epoch in UTC
+        mqtt.publish(topic + "error", output, false); // timestamp since epoch in UTC
         delay_loop(50);
 
-        // Force next wake in 5min
-        next_wake = 300;
+        if (++retries <= 5) {
+            SerialDebug.printf_P(PSTR("%d retries left " CRLF), 6 - retries );
+            // Force next wake in 5min
+            next_wake = 300;
+        } else {
+            SerialDebug.printf_P(PSTR("No more retries left, next try on scheduled time " CRLF) );
+            retries = 0;
+        }
+        preferences.putShort("retries", retries);
     }
+
+    delay_loop(250); 
+    // publish next wake informations
+    doc.clear();
+    output.clear();
+    time_t rawtime = time(nullptr);
+    rawtime += next_wake;
+    doc["seconds"] = next_wake;
+    doc["ts"] = rawtime;
+    doc["date"] = getDate(rawtime);
+    serializeJson(doc, output);
+    mqtt.publish(topic + "sleep_until", output, true); 
 
     // put CC1101 to sleep mode
     cc1101_sleep();
-    delay_loop(100);
-    // do nothing for now
+
+    // wait with some random so all devices don't wake exactlty same time.
+    delay_loop( random(5, 15) );
+
+    // sleep until next time
     deep_sleep(next_wake);
 }
