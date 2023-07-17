@@ -231,38 +231,4 @@ int Make_Radian_Master_req(uint8_t *outputBuffer,uint8_t year,uint32_t serial)
   return TS_len_u8+sizeof(synch_pattern);
 }
 
-void show_wakeup_reason()
-{
-    esp_sleep_wakeup_cause_t wakeup_reason;
-
-    wakeup_reason = esp_sleep_get_wakeup_cause();
-
-    switch(wakeup_reason) {
-        case ESP_SLEEP_WAKEUP_EXT0 : SerialDebug.print("external signal using RTC_IO"); break;
-        case ESP_SLEEP_WAKEUP_EXT1 : SerialDebug.print("external signal using RTC_CNTL"); break;
-        case ESP_SLEEP_WAKEUP_TIMER : SerialDebug.print("timer"); break;
-        case ESP_SLEEP_WAKEUP_TOUCHPAD : SerialDebug.print("touchpad"); break;
-        case ESP_SLEEP_WAKEUP_ULP : SerialDebug.print("ULP program"); break;
-        default : SerialDebug.printf_P(PSTR("not from sleep:%d"),wakeup_reason); break;
-    }
-    SerialDebug.print(CRLF);
-}
-
-void deep_sleep(uint32_t seconds)
-{
-	SerialDebug.print(F("Going to deep sleep mode for"));
-	if (seconds) {
-		SerialDebug.printf_P(PSTR(" %d seconds" CRLF), seconds);
-		esp_sleep_enable_timer_wakeup(seconds * 1000 * 1000);
-	} else {
-		SerialDebug.print(F("ever" CRLF));
-	}
-    // Dum down RGB LED
-	for (int i = MY_RGB_BRIGHTNESS ; i > 16 ; i--) {
-		DotStar_SetBrightness(i);
-		DotStar_SetPixelColor(DOTSTAR_YELLOW, true);
-		delay(10);
-	}
-	esp_deep_sleep_start();
-}
 
