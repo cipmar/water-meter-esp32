@@ -96,8 +96,6 @@ uint16_t GetVinVoltage()
 #endif
 }
 
-
-
 void deep_sleep(uint32_t seconds)
 {
 	SerialDebug.print(F("Going to deep sleep mode for"));
@@ -108,10 +106,10 @@ void deep_sleep(uint32_t seconds)
 		SerialDebug.print(F("ever" CRLF));
 	}
     // Dim down RGB LED
-	for (int i = MY_RGB_BRIGHTNESS ; i > 16 ; i--) {
-		DotStar_SetBrightness(i);
-		DotStar_SetPixelColor(DOTSTAR_YELLOW, true);
-		delay_loop(10);
+	for (int i = 128 ; i > 0 ; i--) {
+		//DotStar_SetBrightness(i);
+		//DotStar_SetPixelColor(DOTSTAR_YELLOW, true);
+		delay(10);
 	}
     DotStar_Clear();
 
@@ -479,7 +477,7 @@ void setup()
     mqtt.enableHTTPWebUpdater(); // Enable the web updater. User and password default to values of MQTTUsername and MQTTPassword. These can be overridded with enableHTTPWebUpdater("user", "password").
     mqtt.enableOTA(); // Enable OTA (Over The Air) updates. Password defaults to MQTTPassword. Port is the default OTA port. Can be overridden with enableOTA("password", port).
     //mqtt.enableLastWillMessage(String(topic + "lastwill").c_str(), "offline", true);  
-    delay(500);
+    delay(250);
     DotStar_Clear();
 
     // Wait for WiFi and MQTT connected 
@@ -510,22 +508,6 @@ void setup()
     SerialDebug.printf_P(PSTR(CRLF "Connected in %ds" CRLF), time_out/2);
     SerialDebug.print(F("Waiting for time sync") );
 
-    /*time_out=0;
-    while (!time_synched) {
-        mqtt.loop();
-        delay(225);
-        DotStar_SetPixelColor(DOTSTAR_PINK, true);
-        digitalWrite(LED_BUILTIN, LOW); 
-        delay(25);
-        digitalWrite(LED_BUILTIN, HIGH); 
-        DotStar_Clear();
-        // >60s (250ms loop)
-        if (++time_out >= 240) {
-            SerialDebug.print(F(CRLF "Unable to sync time in 60s" CRLF) );
-            // Stop and retry in 1H
-            stop_error(3600);
-        }
-    }*/
     time_out=0;
     while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED) {
         mqtt.loop();
@@ -609,9 +591,6 @@ void setup()
     }
 
     SerialDebug.printf_P(PSTR("Setting to %f.4fMHz" CRLF), frequency);
-    DotStar_SetPixelColor(DOTSTAR_GREEN, true);
-    delay(500);
-    DotStar_Clear();
     cc1101_init(frequency, 0);
 }
 
@@ -639,6 +618,7 @@ void loop()
     doc["esp_battery"]["dir"] = bat_dir;
 
     if (meter_data.error>0) {
+        DotStar_SetPixelColor(DOTSTAR_GREEN, true);
         printMeterData(&meter_data);
         // Read successfull, clean up retries
         if (retries) {
@@ -655,6 +635,7 @@ void loop()
         serializeJson(doc, output);
         mqtt.publish(topic + "json", output, true); // timestamp since epoch in UTC
         delay_loop(100); // Do not remove
+        DotStar_Clear();
 
         // If you need specific individual values (not json object) please selec
         // the one you need below
@@ -677,14 +658,16 @@ void loop()
         delay_loop(50); // Do not remove
         #endif
 
-    } else {
 
+    } else {
+        DotStar_SetPixelColor(DOTSTAR_RED, true);
         SerialDebug.print("No data, are you in business hours?" CRLF);
         doc["type"]  = "No Data";
         doc["retries"]  = retries;
         serializeJson(doc, output);
         mqtt.publish(topic + "error", output, false); // timestamp since epoch in UTC
-        delay_loop(50);
+        delay_loop(100);
+        DotStar_Clear();
 
         if (++retries <= 5) {
             SerialDebug.printf_P(PSTR("%d retries left " CRLF), 6 - retries );
@@ -695,9 +678,10 @@ void loop()
             retries = 0;
         }
         preferences.putShort("retries", retries);
-    }
 
-    delay_loop(250); 
+    }
+    delay_loop(250);
+
     // publish next wake informations
     doc.clear();
     output.clear();
