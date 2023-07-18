@@ -17,7 +17,7 @@ I added some changes to the original firmware to work with my custom esp32-c3 bo
 
 The project runs on ESP32 with an RF transreciver (CC1101). 
 
-Hardware can be any ESP32+CC1101 with correct wiring/
+Hardware can be any ESP32+CC1101 with correct wiring.
 
 I used my open source one [cc1101-e07-pi](https://github.com/hallard/cc1101-e07-pi), you can check it out for the already made hardware or look at the original [repo][5] if you want to build your own.
 
@@ -29,7 +29,48 @@ I used my open source one [cc1101-e07-pi](https://github.com/hallard/cc1101-e07-
 
 All configuration is done thru `platformio.ini` file
 
-TBD
+You need to get your meter serial and year, it can be found on the meter label itself
+
+![Cyble Meter Label](pictures/meter_label.png)
+
+Then put values in `platformio.ini` removing leading 0 from serial (mine was `0828979` I put `828979`
+```ini
+    -D METER_YEAR=22
+    -D METER_SERIAL=828979
+```
+
+Set the hour of wakeup to read data
+```ini
+    -D WAKE_HOUR=08
+```
+Here each day on 08H00 AM
+
+Set your WiFi credentials and time zone see [timezone.h](timezone.h)
+```ini
+    -D WIFI_SSID=\"YOUR-SSID\"
+    -D WIFI_PASS=\"YOUR-PASSWORD\"
+    -D TIME_ZONE=TZ_Europe_Paris ; See timezone.h of ./src folder
+```
+
+And then MQTT related 
+```ini
+    -D MQTT_SERVER=\"192.168.1.8\"
+    -D TOPIC_BASE=\"everblu/\"
+    -D MQTT_USER=\"\"
+    -D MQTT_PASS=\"\"
+    -D MQTT_PORT=1883
+    ;-D PUBLISH_RAW  ; Enable to publish also RAW values (keeping JSON)
+```
+
+If you need MQTT auth please do like that
+```ini
+    -D MQTT_SERVER=\"192.168.1.8\"
+    -D TOPIC_BASE=\"everblu/\"
+    -D MQTT_USER=\"MQTT_USER\"
+    -D MQTT_PASS=\"MQTT_PASS\"
+    -D MQTT_PORT=1883
+    ;-D PUBLISH_RAW  ; Enable to publish also RAW values (keeping JSON)
+```
 
 ## MQTT Topics and data
 
@@ -43,23 +84,23 @@ everblu/cyble-22-0828979-espbf84
 
 ### Reading OK
 
-When read suceeded, results are sent to the base topic plus `json`
+When read suceeded, results are sent in `JSON`format to the base topic plus `json`
 
 Example received on `everblu/cyble-22-0828979-espbf84/json`
 
-the format is `JSON`
-
-TBD
-
 ```json
 {
-    "ts":1689626877,
-    "date":"Mon Jul 17 22:47:57 2023",
-    "esp_battery":{
-        "percent":90,
-        "vbat":4094,
-        "vin":4800,
-        "dir":0}
+    "ts": 1689656420,
+    "date": "Tue Jul 18 07:00:20 2023",
+    "esp_battery": {
+        "percent": 97,
+        "vbat": 4155 },
+    "liters": 467932,
+    "battery": 173,
+    "read": 228,
+    "rssi": -87,
+    "lqi": -120,
+    "hours":"06:18"
 }
 ```
 
@@ -78,25 +119,31 @@ Values can also be sent in raw format enabling setting `PUBLISH_RAW` in `platfor
 - `everblu/cyble-22-0828979-espbf84/rssi`
 - `everblu/cyble-22-0828979-espbf84/lqi`
 
+if board has battery built in chip (my esp32-c3 CC1101 boards)
 
-### Read failed
+- `everblu/cyble-22-0828979-espbf84/esp_bat_pc`
+- `everblu/cyble-22-0828979-espbf84/esp_bat_mv`
 
-When read failed, results are sent in `JSON` tExample received on `everblu/cyble-22-0828979-espbf84/error`
+
+### Read fail
+
+When read failed, results are sent in `JSON`
+
+Example received on `everblu/cyble-22-0828979-espbf84/error`
+
 ```json
 {
-    "ts":1689626877,
-    "date":"Mon Jul 17 22:47:57 2023",
-    "esp_battery":{
-        "percent":90,
-        "vbat":4094,
-        "vin":4800,
-        "dir":0},
-    "type":"No Data",
-    "retries":5
+    "ts": 1689626877,
+    "date": "Mon Jul 17 22:47:57 2023",
+    "esp_battery": {
+        "percent": 90,
+        "vbat": 4094 },
+    "type": "No Data",
+    "retries": 5
 }
 ```
 
-When read failed device will retry 5 times (5min in between), this is the retrie field. After 5 tries, it cancel and set wake up to programmed hour `WAKE_HOUR` of `platformio.ini`
+When read fail, device will retry 5 times (5min in between), this is the retrie field. After 5 tries, it cancel and set wake up to programmed hour `WAKE_HOUR` of `platformio.ini`
 
 
 ### Scanning
@@ -109,13 +156,17 @@ the format is `JSON`
 
 ```json
 { 
+    "ts": 1689416825,
 	"date": "Sat Jul 15 12:27:05 2023", 
-	"frequency": "433.8160", 
-	"result":0 
+	"frequency": "433.8226", 
+    "register", "0x10AE7C",
+    "rssi": -87,
+    "lqi": -120,
+	"result": 115
 }
 ```
 
-`result` is `-1` if data can't be read, `-2` if read but saw an error else it's #reads of the counter (so positive)
+`result` is below `0` on fail, `-2` if data can't be read, `-1` if read but saw an error else it's #reads of the counter (so positive)
 
 ### End of Scan
 
@@ -128,8 +179,9 @@ If `frequency` is `0` this mean no working frequency has been found.
 
 ```json
 { 
-	"date":"Sat Jul 15 13:06:04 2023", 
-	"frequency":"0.0000",
+    "ts": 1689419164,
+	"date": "Sat Jul 15 13:06:04 2023", 
+	"frequency": "0.0000",
 }
 ```
 
@@ -137,10 +189,11 @@ If `frequency` is found it will be the center frequency of the working frequenci
 
 ```json
 { 
-	"date":"Sat Jul 15 13:06:04 2023", 
-	"frequency":"433.8000", 
-	"min":"433.7900", 
-	"max":"433.8100"
+    "ts": 1689419164,
+	"date": "Sat Jul 15 13:06:04 2023", 
+	"frequency": "433.8000", 
+	"min": "433.7900", 
+	"max": "433.8100"
 }
 ```
 
@@ -158,8 +211,6 @@ Example received on `everblu/cyble-22-0828979-espbf84/sleep_until`
 }
 ```
 
-
-
 ## Troubleshooting
 
 ### Frequency adjustment
@@ -175,11 +226,17 @@ Once found device will save frequency and use it on each boot.
 ### Business hours
 
 Your meter may be configured in such a way that is listens for request only during hours when data collectors work - to conserve energy. 
-If you are unable to communicate with the meter, please try again during business hours (8-16).
+If you are unable to communicate with the meter, please try again during business hours.
 
-It seems also that you can't read it on Saturday/Sunday but works on off day such as July 14th.
+```json
+{
+    "hours":"06:18" 
+}
+```
 
-Mine are 06H to 18H, don't know if they are UTC or local time with daligh saving.
+Mine is working from (06-18) and this results looks like LocalTime (tested in summer) because working form 06:00 to 18:59 but yours may be different. I would suggest on first try to test between 10:00 and 16:00.
+
+Anyway mine can't be read on Saturday/Sunday but works on off day such as July 14th.
 
 ### Serial number starting with 0
 
