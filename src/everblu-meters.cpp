@@ -361,7 +361,7 @@ int test_frequency_register(uint32_t reg)
     sprintf(buff, "0x%06X", reg);
     doc["register"] = buff;
     doc["result"] = meter_data.error;
-    if (meter_data.error>0) {
+    if ( meter_data.error > 0 ) {
         doc["rssi"] = meter_data.rssi ;
         doc["lqi"] = meter_data.lqi;
     }
@@ -470,7 +470,7 @@ void setup()
     // Start network stuff
     mqtt.setMqttClientName(hostname);
     mqtt.setWifiCredentials(WIFI_SSID, WIFI_PASS);
-    mqtt.setMqttServer(MQTT_SERVER); // default no user/pass and port 1883
+    mqtt.setMqttServer(MQTT_SERVER, MQTT_USER, MQTT_PASS, MQTT_PORT); // default no user/pass and port 1883
     mqtt.setMaxPacketSize(1024);
     // Optional functionalities of EspMQTTClient
     //mqtt.enableDebuggingMessages(); // Enable debugging messages sent to serial output
@@ -614,8 +614,6 @@ void loop()
     doc["date"] = getDate();
     doc["esp_battery"]["percent"] = bat_pc/10;
     doc["esp_battery"]["vbat"] = bat_mv;
-    doc["esp_battery"]["vin"] = bat_vin;
-    doc["esp_battery"]["dir"] = bat_dir;
 
     if (meter_data.error>0) {
         DotStar_SetPixelColor(DOTSTAR_GREEN, true);
@@ -656,10 +654,15 @@ void loop()
         delay_loop(50); // Do not remove
         mqtt.publish(topic + "lqi",  String(meter_data.lqi, DEC), true); 
         delay_loop(50); // Do not remove
+        mqtt.publish(topic + "esp_bat_pc",  String(bat_pc, DEC), true); 
+        delay_loop(50); // Do not remove
+        mqtt.publish(topic + "esp_bat_mv",  String(bat_mv, DEC), true); 
+        delay_loop(50); // Do not remove
         #endif
 
 
     } else {
+
         DotStar_SetPixelColor(DOTSTAR_RED, true);
         SerialDebug.print("No data, are you in business hours?" CRLF);
         doc["type"]  = "No Data";
