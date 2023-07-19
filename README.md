@@ -39,11 +39,19 @@ Then put values in `platformio.ini` removing leading 0 from serial (mine was `08
     -D METER_SERIAL=828979
 ```
 
-Set the hour of wakeup to read data
+Set the hour/min and retries mode of wakeup to read data
 ```ini
     -D WAKE_HOUR=08
+    -D WAKE_MIN=15
+    -D RETRIES=6        
+    -D RETRIES_DELAY=15 
 ```
-Here each day on 08H00 AM
+
+Here, each day at 08H15, if read fails it will retry 15min later and do that until it worked or 6 times maximum.
+
+So in case of all reads fail, last retry will be at 09H45 and then stop retries. 
+
+Process will start back at 08H15 next day.
 
 Set your WiFi credentials and time zone see [timezone.h](timezone.h)
 ```ini
@@ -139,11 +147,11 @@ Example received on `everblu/cyble-22-0828979-espbf84/error`
         "percent": 90,
         "vbat": 4094 },
     "type": "No Data",
-    "retries": 5
+    "retries": 4
 }
 ```
 
-When read fail, device will retry 5 times (5min in between), this is the retrie field. After 5 tries, it cancel and set wake up to programmed hour `WAKE_HOUR` of `platformio.ini`
+When read fail, device will follow `RETRIES` and `RETRIES_DELAY` parameters of `platformio.ini` (see above)
 
 
 ### Scanning
