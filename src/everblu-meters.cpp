@@ -208,8 +208,8 @@ void onNtpSync(struct timeval *t)
 
     // We will calculate delay for next measure reading 
     // We passed programmed time for today schedule for tomorrow ?
-    if (nowinfo.tm_hour >= WAKE_HOUR) {
-        tominfo->tm_hour = WAKE_HOUR;
+    if (nowinfo.tm_hour>WAKE_HOUR || (nowinfo.tm_hour==WAKE_HOUR && nowinfo.tm_min>=WAKE_MIN) ) {
+        tominfo->tm_hour = WAKE_MIN;
         tominfo->tm_min = 0;
         tominfo->tm_sec = 0;
         SerialDebug.print("Next wake tomorrow at ");
@@ -218,7 +218,7 @@ void onNtpSync(struct timeval *t)
         next_wake = mktime(tominfo) - now ;
     } else {
         nowinfo.tm_hour = WAKE_HOUR;
-        nowinfo.tm_min = 0;
+        nowinfo.tm_min = WAKE_MIN;
         nowinfo.tm_sec = 0;
         SerialDebug.print("Next wake today at ");
         SerialDebug.print(&nowinfo, "%B %d %Y %H:%M:%S");
@@ -441,14 +441,15 @@ void setup()
 #endif
 
     SerialDebug.println();
-    SerialDebug.println("===========================");
-    SerialDebug.printf("Device Name  : %s" CRLF, hostname);
-    SerialDebug.print ("Wakeup by    : "); show_wakeup_reason();
-    SerialDebug.printf("Meter Year   : %02d" CRLF, METER_YEAR);
-    SerialDebug.printf("Meter Serial : %06d" CRLF, METER_SERIAL);
-    SerialDebug.printf("SPI Speed    : %.1fMHz" CRLF, ((float)_spi_speed) / 1000.0f / 1000.0f);
-    SerialDebug.printf("Frequency    : %.4fMHz" CRLF, frequency);
-    SerialDebug.printf("Retries left : %d" CRLF, 6 -  preferences.getShort("retries", 0) );
+    SerialDebug.println("================================");
+    SerialDebug.printf("Device Name   : %s" CRLF, hostname);
+    SerialDebug.print ("Wakeup by     : "); show_wakeup_reason();
+    SerialDebug.printf("Meter Year    : %02d" CRLF, METER_YEAR);
+    SerialDebug.printf("Meter Serial  : %06d" CRLF, METER_SERIAL);
+    SerialDebug.printf("SPI Speed     : %.1fMHz" CRLF, ((float)_spi_speed) / 1000.0f / 1000.0f);
+    SerialDebug.printf("Frequency     : %.4fMHz" CRLF, frequency);
+    SerialDebug.printf("Retries left  : %d/%d" CRLF, RETRIES -  preferences.getShort("retries", RETRIES), RETRIES );
+    SerialDebug.printf("Retries delay : %d" CRLF, RETRIES_DELAY );
 
 #ifdef BAT_VOLTAGE    
     SerialDebug.printf("Vin          : %.2fV" CRLF, ((float)bat_vin)/1000.0f );
@@ -599,10 +600,10 @@ void loop()
     StaticJsonDocument<512> doc;
     String output;
     char buff[32];
-    int16_t retries = preferences.getShort("retries", 0);
+    int16_t retries = preferences.getShort("retries", RETRIES);
 
     if (retries) {
-        SerialDebug.printf_P(PSTR("Trying Reading #%d ou of #5 from meter" CRLF), retries );
+        SerialDebug.printf_P(PSTR("Trying Reading #%d out of %d from meter" CRLF), retries, RETRIES );
     } else {
         SerialDebug.print("Reading data from meter" CRLF);
     }
@@ -672,10 +673,10 @@ void loop()
         delay_loop(100);
         DotStar_Clear();
 
-        if (++retries <= 5) {
-            SerialDebug.printf_P(PSTR("%d retries left " CRLF), 6 - retries );
-            // Force next wake in 5min
-            next_wake = 300;
+        if (++retries <= RETRIES) {
+            SerialDebug.printf_P(PSTR("%d retries left out of %d" CRLF), RETRIES+1 - retries, RETRIES );
+            // Force next wake in programmed delay 
+            next_wake = RETRIES_DELAY;
         } else {
             SerialDebug.printf_P(PSTR("No more retries left, next try on scheduled time " CRLF) );
             retries = 0;
