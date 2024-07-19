@@ -6,7 +6,7 @@
 #include "esp_sntp.h"
 #include "timezone.h"
 #include "everblu_meters.h"
-
+#include "secrets.h"
 
 EspMQTTClient mqtt;
 Preferences preferences;
@@ -381,13 +381,13 @@ void setup()
     SerialDebug.begin(115200);
 
     // this resets all the neopixels to an off state
-    strip.Begin();
-    strip.Show();
+    // strip.Begin();
+    // strip.Show();
     delay(100); // Needed to initialize
-    DotStar_Clear();
-    DotStar_SetBrightness( MY_RGB_BRIGHTNESS );    
+    // DotStar_Clear();
+    // DotStar_SetBrightness( MY_RGB_BRIGHTNESS );
 
-    Wire.begin(I2C_SDA, I2C_SCL);
+    // Wire.begin(I2C_SDA, I2C_SCL);
 
     // Set hostanme
     uint32_t chipId = 0;
@@ -489,15 +489,15 @@ void setup()
         delay(450);
         if (mqtt.isWifiConnected() ) {
             SerialDebug.print('*');
-            DotStar_SetPixelColor(DOTSTAR_PINK, true);
+            // DotStar_SetPixelColor(DOTSTAR_PINK, true);
         } else {
             SerialDebug.print('.');
-            DotStar_SetPixelColor(DOTSTAR_CYAN, true);
+            // DotStar_SetPixelColor(DOTSTAR_CYAN, true);
         }
         digitalWrite(LED_BUILTIN, LOW); 
         delay(50);
         digitalWrite(LED_BUILTIN, HIGH); 
-        DotStar_Clear();
+        // DotStar_Clear();
         // >60s (500ms loop)
         if (++time_out >= 120) {
             SerialDebug.print(F(CRLF "Unable to connect in 60s" CRLF) );
